@@ -79,6 +79,7 @@ model Monster {
   attackRange         Int           @default(1)
   coinDropMin         Int           @default(1)
   coinDropMax         Int           @default(2)
+  baseXp              Int           @default(8)
   createdAt           DateTime      @default(now())
   updatedAt           DateTime      @updatedAt
   waveEntries         WaveMonster[]

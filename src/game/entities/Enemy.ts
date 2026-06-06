@@ -22,13 +22,15 @@ export class Enemy {
   private frameTimer = 0
 
   readonly spriteSet: string
+  readonly baseXp: number
 
-  constructor(x: number, y: number, hp = 80, spriteSet = 'zombie') {
+  constructor(x: number, y: number, hp = 80, spriteSet = 'zombie', baseXp = 8) {
     this.x = x
     this.y = y
     this.hp = hp
     this.maxHp = hp
     this.spriteSet = spriteSet
+    this.baseXp = baseXp
   }
 
   async load() {

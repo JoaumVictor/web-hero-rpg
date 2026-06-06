@@ -11,6 +11,10 @@ type HeroTemplate = {
   instance: { id: string; level: number; xp: number; groupPosition: number | null } | null
 }
 
+function xpToNext(level: number): number {
+  return Math.round(100 * Math.pow(level, 1.5))
+}
+
 const POSITION_LABELS: Record<number, string> = { 0: 'Frente', 1: 'Meio', 2: 'Fundo' }
 const POSITION_COLORS: Record<number, string> = {
   0: 'text-red-400 border-red-800/50',
@@ -132,15 +136,43 @@ export default function HeroesPage() {
                       <span className="text-white font-bold text-sm">{h.name}</span>
                       <span className="text-gray-600 text-xs">{h.heroClass}</span>
                       {h.instance && (
-                        <span className="text-yellow-600 text-xs">Lv.{h.instance.level}</span>
+                        <span className="text-green-400 text-xs font-bold">Lv.{h.instance.level}</span>
                       )}
                     </div>
                     <div className="flex gap-3 text-xs text-gray-500 mt-0.5">
-                      <span>HP:{h.hp}</span>
-                      <span className="text-red-400">ATK:{h.attack}</span>
-                      <span className="text-blue-400">DEF:{h.defense}</span>
-                      <span>Rng:{h.attackRange ?? 1}g</span>
+                      {h.instance ? (() => {
+                        const lv = h.instance.level - 1
+                        return <>
+                          <span>HP:{h.hp + lv * 2}</span>
+                          <span className="text-red-400">ATK:{Math.round((h.attack + lv * 0.5) * 10) / 10}</span>
+                          <span className="text-blue-400">DEF:{h.defense + Math.floor(lv * 0.3)}</span>
+                          <span>Rng:{h.attackRange ?? 1}g</span>
+                        </>
+                      })() : <>
+                        <span>HP:{h.hp}</span>
+                        <span className="text-red-400">ATK:{h.attack}</span>
+                        <span className="text-blue-400">DEF:{h.defense}</span>
+                        <span>Rng:{h.attackRange ?? 1}g</span>
+                      </>}
                     </div>
+                    {h.instance && (() => {
+                      const needed = xpToNext(h.instance.level)
+                      const pct = Math.min(1, h.instance.xp / needed)
+                      return (
+                        <div className="mt-1.5">
+                          <div className="flex justify-between text-xs text-gray-600 mb-0.5">
+                            <span>XP</span>
+                            <span>{h.instance.xp} / {needed}</span>
+                          </div>
+                          <div className="w-full h-1.5 bg-gray-800 rounded-full overflow-hidden">
+                            <div
+                              className="h-full bg-green-500/70 rounded-full transition-all"
+                              style={{ width: `${pct * 100}%` }}
+                            />
+                          </div>
+                        </div>
+                      )
+                    })()}
                   </div>
                   {h.instance && (
                     <div className="flex gap-1">

@@ -39,7 +39,15 @@ interface Wave {
 interface FloatingText {
   wx: number; wy: number
   text: string; color: string
+  size?: number       // font size px, default 16
   life: number        // 1 → 0
+}
+
+interface HeroInfo {
+  name: string
+  level: number
+  xp: number
+  xpToNext: number
 }
 
 interface Announcement {
@@ -83,6 +91,18 @@ export class Game {
 
   onRestart?: () => void
   onCoinsChange?: (total: number) => void
+  onKill?: (info: { x: number; y: number; baseXp: number }) => void
+
+  private heroInfo: HeroInfo[] = []
+
+  setHeroInfo(heroes: HeroInfo[]) {
+    this.heroInfo = heroes
+  }
+
+  addFloat(wx: number, wy: number, text: string, color: string, size = 16) {
+    if (this.destroyed) return
+    this.floats.push({ wx, wy, text, color, size, life: 1 })
+  }
 
   private destroyed = false
   private restartCalled = false
@@ -262,13 +282,8 @@ export class Game {
         const coins = (Math.floor(e.x) % 3 === 0) ? 2 : 1
         this.totalCoins += coins
         this.onCoinsChange?.(this.totalCoins)
-        this.floats.push({
-          wx: e.x + e.width / 2,
-          wy: e.y,
-          text: `+${coins}`,
-          color: '#f1c40f',
-          life: 1,
-        })
+        this.floats.push({ wx: e.x + e.width / 2, wy: e.y, text: `+${coins}`, color: '#f1c40f', life: 1 })
+        this.onKill?.({ x: e.x + e.width / 2, y: e.y - 20, baseXp: e.baseXp })
       }
     }
   }
@@ -316,13 +331,13 @@ export class Game {
       for (const e of wave.enemies) e.draw(ctx)
     }
 
-    // floating coin texts (world space) — simple, no icon
+    // floating texts (world space)
     for (const f of this.floats) {
       if (f.life <= 0) continue
       const fy = f.wy - (1 - f.life) * 55
       ctx.globalAlpha = Math.min(1, f.life * 1.8)
       ctx.fillStyle = f.color
-      ctx.font = 'bold 16px monospace'
+      ctx.font = `bold ${f.size ?? 16}px monospace`
       ctx.textAlign = 'center'
       ctx.fillText(f.text, f.wx, fy)
       ctx.textAlign = 'left'
@@ -397,7 +412,7 @@ export class Game {
   private renderHUD() {
     const ctx = this.ctx
 
-    // thin top bar — only level label + coin count (HP is above the character)
+    // thin top bar
     ctx.fillStyle = 'rgba(0,0,0,0.55)'
     ctx.fillRect(0, 0, W, 30)
 
@@ -407,11 +422,11 @@ export class Game {
     ctx.textAlign = 'center'
     ctx.fillText('MUNDO 0  ·  FASE 1', W / 2, 19)
 
-    // coin icon (circle) + number right-aligned, circle to the left of the number
+    // coin icon + count (right)
     const numStr = String(this.totalCoins)
     ctx.font = 'bold 12px monospace'
     const numW = ctx.measureText(numStr).width
-    const circleX = W - 14 - numW - 10   // 14px right margin, 10px gap after circle
+    const circleX = W - 14 - numW - 10
     ctx.beginPath()
     ctx.arc(circleX, 15, 6, 0, Math.PI * 2)
     ctx.fillStyle = '#f1c40f'
@@ -422,6 +437,33 @@ export class Game {
     ctx.fillStyle = '#f1c40f'
     ctx.textAlign = 'left'
     ctx.fillText(numStr, circleX + 10, 19)
+
+    // hero level badges (left side)
+    if (this.heroInfo.length > 0) {
+      let bx = 8
+      for (const h of this.heroInfo) {
+        const label = `Lv.${h.level}`
+        ctx.font = 'bold 10px monospace'
+        const lw = ctx.measureText(label).width
+        const bw = lw + 10
+
+        // badge bg
+        ctx.fillStyle = 'rgba(255,255,255,0.08)'
+        ctx.fillRect(bx, 5, bw, 20)
+
+        // xp progress fill
+        const pct = h.xpToNext > 0 ? h.xp / h.xpToNext : 0
+        ctx.fillStyle = 'rgba(46,204,113,0.35)'
+        ctx.fillRect(bx, 5, bw * pct, 20)
+
+        // label
+        ctx.fillStyle = '#a8e6cf'
+        ctx.textAlign = 'left'
+        ctx.fillText(label, bx + 5, 18)
+
+        bx += bw + 4
+      }
+    }
 
     ctx.textAlign = 'left'
   }

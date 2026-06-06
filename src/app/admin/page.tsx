@@ -12,7 +12,7 @@ type Monster = {
   id: string; name: string; spriteSet: string; monsterType: string
   isBoss: boolean; sizeMultiplier: number; attackBehavior: string
   hp: number; attack: number; defense: number
-  attackCooldown: number; walkSpeed: number; attackRange: number; coinDropMin: number; coinDropMax: number
+  attackCooldown: number; walkSpeed: number; attackRange: number; coinDropMin: number; coinDropMax: number; baseXp: number
 }
 type WaveMonster = { id: string; offsetX: number; levelMult: number; monster: Monster }
 type Wave = { id: string; order: number; triggerX: number; monsters: WaveMonster[] }
@@ -193,7 +193,7 @@ const MONSTER_DEFAULTS: Omit<Monster, 'id'> = {
   name: '', spriteSet: 'zombie', monsterType: 'UNDEAD',
   isBoss: false, sizeMultiplier: 1, attackBehavior: 'MELEE',
   hp: 12, attack: 1, defense: 0, attackCooldown: 2.2,
-  walkSpeed: 42, attackRange: 1, coinDropMin: 1, coinDropMax: 2,
+  walkSpeed: 42, attackRange: 1, coinDropMin: 1, coinDropMax: 2, baseXp: 8,
 }
 
 function MonstersTab() {
@@ -290,6 +290,7 @@ function MonstersTab() {
               <Field label="Moedas (min)"><NumInput v={editing.coinDropMin ?? 1} onChange={v => setEditing(e => ({ ...e!, coinDropMin: v }))} /></Field>
               <Field label="Moedas (max)"><NumInput v={editing.coinDropMax ?? 2} onChange={v => setEditing(e => ({ ...e!, coinDropMax: v }))} /></Field>
             </Row>
+            <Field label="XP base (por kill)"><NumInput v={editing.baseXp ?? 8} onChange={v => setEditing(e => ({ ...e!, baseXp: v }))} /></Field>
             <Row>
               <Field label="Boss">
                 <select value={editing.isBoss ? '1' : '0'} onChange={e => setEditing(prev => ({ ...prev!, isBoss: e.target.value === '1' }))} className="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1 text-xs text-white">

@@ -65,6 +65,7 @@ async function main() {
       attackRange:   1,
       coinDropMin:   1,
       coinDropMax:   2,
+      baseXp:        8,
     },
   })
 
