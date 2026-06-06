@@ -6,15 +6,15 @@ RPG de ação side-scrolling rodando no browser. O herói atravessa um mundo 2D,
 
 ## Stack
 
-| Camada | Tecnologia |
-|---|---|
-| Frontend / Framework | Next.js 16 (App Router) |
+| Camada               | Tecnologia                |
+| -------------------- | ------------------------- |
+| Frontend / Framework | Next.js 16 (App Router)   |
 | Renderização do game | Canvas HTML5 (sem Phaser) |
-| Linguagem | TypeScript |
-| Estilos | Tailwind CSS v4 |
-| Banco de dados | PostgreSQL 16 |
-| ORM | Prisma |
-| Infra local | Docker Compose |
+| Linguagem            | TypeScript                |
+| Estilos              | Tailwind CSS v4           |
+| Banco de dados       | PostgreSQL 16             |
+| ORM                  | Prisma                    |
+| Infra local          | Docker Compose            |
 
 ---
 
@@ -40,6 +40,7 @@ docker-compose up -d
 ```
 
 Isso sobe:
+
 - **PostgreSQL 16** em `localhost:5432`
 - **pgAdmin 4** em `http://localhost:5050` (login: `admin@hero.local` / `admin`)
 
@@ -69,11 +70,11 @@ Acesse `http://localhost:3000/play` para jogar.
 
 ## Como jogar
 
-| Tecla | Ação |
-|---|---|
+| Tecla     | Ação                  |
+| --------- | --------------------- |
 | `A` / `←` | Mover para a esquerda |
-| `D` / `→` | Mover para a direita |
-| `J` / `Z` | Atacar |
+| `D` / `→` | Mover para a direita  |
+| `J` / `Z` | Atacar                |
 
 O herói auto-ataca inimigos dentro do alcance. Derrote todos os 10 inimigos para vencer a fase. Se o HP chegar a zero, é game over.
 
