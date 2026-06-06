@@ -11,9 +11,13 @@ const WORLD_WIDTH = 4000
 const WALK_DX = 0.65      // 0.65 × 220 ≈ 143 px/s
 const INTRO_DX = 0.30     // slow walk during title card
 const AUTO_RANGE = 115    // center-to-center distance to auto-attack
-const PLAYER_DAMAGE = 4
-const PLAYER_HP = 26
 const ENEMY_HP = 12
+
+// defaults — overridden by heroStats when provided
+const DEFAULT_HP = 26
+const DEFAULT_ATTACK = 4
+const DEFAULT_SPEED = 220
+const DEFAULT_COOLDOWN_MS = 1500
 
 // ── Waves ─────────────────────────────────────────────────────────
 // triggerX: hero must reach this world-x to spawn the wave
@@ -107,13 +111,18 @@ export class Game {
   private destroyed = false
   private restartCalled = false
 
-  constructor(canvas: HTMLCanvasElement, initialCoins = 0) {
+  constructor(canvas: HTMLCanvasElement, initialCoins = 0, heroStats?: { hp: number; attack: number; walkSpeed: number; attackCooldown: number }) {
     this.canvas = canvas
     canvas.width = W
     canvas.height = H
     this.ctx = canvas.getContext('2d')!
 
-    this.player = new Player(60, GROUND_Y - 100, PLAYER_HP)
+    const hp = heroStats?.hp ?? DEFAULT_HP
+    const attack = heroStats?.attack ?? DEFAULT_ATTACK
+    const speed = heroStats?.walkSpeed ?? DEFAULT_SPEED
+    const cooldownMs = heroStats ? heroStats.attackCooldown * 1000 : DEFAULT_COOLDOWN_MS
+
+    this.player = new Player(60, GROUND_Y - 100, hp, 'hero', attack, speed, cooldownMs)
     this.totalCoins = initialCoins
 
     // enemies created with placeholder x=0 — real position set on wave trigger
@@ -243,7 +252,7 @@ export class Game {
         const ec = e.x + e.width / 2
         const facing = this.player.facingRight ? ec > hc : ec < hc
         if (facing && Math.abs(hc - ec) <= this.player.attackRange) {
-          e.takeDamage(PLAYER_DAMAGE)
+          e.takeDamage(this.player.attackDamage)
           this.player.markHitDealt()
           return
         }

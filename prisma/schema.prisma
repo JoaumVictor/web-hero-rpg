@@ -47,18 +47,30 @@ model Hero {
 }
 
 model HeroInstance {
-  id            String   @id @default(cuid())
+  id            String      @id @default(cuid())
   playerId      String
-  player        Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  player        Player      @relation(fields: [playerId], references: [id], onDelete: Cascade)
   heroId        String
-  hero          Hero     @relation(fields: [heroId], references: [id])
-  level         Int      @default(1)
-  xp            Int      @default(0)
+  hero          Hero        @relation(fields: [heroId], references: [id])
+  level         Int         @default(1)
+  xp            Int         @default(0)
   groupPosition Int?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  equipment     Equipment[]
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
 
   @@unique([playerId, heroId])
+}
+
+model Equipment {
+  id              String        @id @default(cuid())
+  heroInstanceId  String
+  heroInstance    HeroInstance  @relation(fields: [heroInstanceId], references: [id], onDelete: Cascade)
+  slot            String
+  inventoryItemId String
+  inventoryItem   InventoryItem @relation(fields: [inventoryItemId], references: [id])
+
+  @@unique([heroInstanceId, slot])
 }
 
 // ── Game config: monsters ─────────────────────────────────────────
@@ -150,13 +162,14 @@ model LootEntry {
 }
 
 model InventoryItem {
-  id         String   @id @default(cuid())
+  id         String      @id @default(cuid())
   playerId   String
-  player     Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  player     Player      @relation(fields: [playerId], references: [id], onDelete: Cascade)
   itemId     String
-  item       Item     @relation(fields: [itemId], references: [id])
-  quantity   Int      @default(1)
-  obtainedAt DateTime @default(now())
+  item       Item        @relation(fields: [itemId], references: [id])
+  quantity   Int         @default(1)
+  obtainedAt DateTime    @default(now())
+  equipment  Equipment[]
 
   @@index([playerId])
 }

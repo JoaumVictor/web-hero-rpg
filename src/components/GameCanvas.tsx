@@ -3,6 +3,7 @@
 import { useEffect, useRef } from 'react'
 import { Game } from '@/game/Game'
 import { getPlayerId, getLocalCoins, setLocalCoins } from '@/lib/session'
+import { computeStats } from '@/lib/heroStats'
 
 async function loadCoins(playerId: string): Promise<number> {
   const local = getLocalCoins()
@@ -35,23 +36,50 @@ const RARITY_COLORS: Record<string, string> = {
 
 type HeroApiItem = {
   name: string
-  instance: { id: string; level: number; xp: number; groupPosition: number | null } | null
+  hp: number; attack: number; defense: number; attackCooldown: number; walkSpeed: number; attackRange: number
+  instance: {
+    id: string; level: number; xp: number; groupPosition: number | null
+    equipment: { slot: string; inventoryItem: { item: { statBonus: Record<string, number> } } }[]
+  } | null
 }
 
-async function loadGroupHeroes(playerId: string) {
+type GroupHeroInfo = {
+  name: string; level: number; xp: number; xpToNext: number
+}
+
+type LeadHeroStats = {
+  hp: number; attack: number; walkSpeed: number; attackCooldown: number
+} | null
+
+async function loadGroupData(playerId: string): Promise<{ heroInfo: GroupHeroInfo[]; leadStats: LeadHeroStats }> {
   try {
     const res = await fetch(`/api/heroes?player=${playerId}`)
     const heroes: HeroApiItem[] = await res.json()
-    return heroes
-      .filter(h => h.instance?.groupPosition != null)
-      .map(h => ({
-        name: h.name,
-        level: h.instance!.level,
-        xp: h.instance!.xp,
-        xpToNext: Math.round(100 * Math.pow(h.instance!.level, 1.5)),
-      }))
+    const inGroup = heroes.filter(h => h.instance?.groupPosition != null)
+
+    const heroInfo = inGroup.map(h => ({
+      name: h.name,
+      level: h.instance!.level,
+      xp: h.instance!.xp,
+      xpToNext: Math.round(100 * Math.pow(h.instance!.level, 1.5)),
+    }))
+
+    // use position 0 (front hero) stats for the game engine
+    const front = inGroup.find(h => h.instance!.groupPosition === 0) ?? inGroup[0]
+    let leadStats: LeadHeroStats = null
+    if (front) {
+      const equippedItems = front.instance!.equipment.map(e => ({ statBonus: e.inventoryItem.item.statBonus }))
+      const stats = computeStats(
+        { hp: front.hp, attack: front.attack, defense: front.defense, attackCooldown: front.attackCooldown, walkSpeed: front.walkSpeed, attackRange: front.attackRange },
+        front.instance!.level,
+        equippedItems,
+      )
+      leadStats = { hp: stats.hp, attack: stats.attack, walkSpeed: stats.walkSpeed, attackCooldown: stats.attackCooldown }
+    }
+
+    return { heroInfo, leadStats }
   } catch {
-    return []
+    return { heroInfo: [], leadStats: null }
   }
 }
 
@@ -72,14 +100,14 @@ export default function GameCanvas({ onRestart }: Props) {
     const playerId = getPlayerId()
 
     const init = async () => {
-      const [initialCoins, groupHeroes] = await Promise.all([
+      const [initialCoins, groupData] = await Promise.all([
         playerId ? loadCoins(playerId) : Promise.resolve(getLocalCoins()),
-        playerId ? loadGroupHeroes(playerId) : Promise.resolve([]),
+        playerId ? loadGroupData(playerId) : Promise.resolve({ heroInfo: [], leadStats: null }),
       ])
       if (destroyed) return
 
-      game = new Game(canvas, initialCoins)
-      game.setHeroInfo(groupHeroes)
+      game = new Game(canvas, initialCoins, groupData.leadStats ?? undefined)
+      game.setHeroInfo(groupData.heroInfo)
 
       game.onRestart = onRestart
       game.onCoinsChange = (total) => {

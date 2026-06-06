@@ -1,8 +1,8 @@
 import { loadSpriteSet, SpriteSet } from '@/lib/spriteLoader'
 
-const SPEED = 220
+const DEFAULT_SPEED = 220
 const FRAME_MS = 100
-const ATTACK_COOLDOWN = 1500
+const DEFAULT_ATTACK_COOLDOWN = 1500
 const DRAW_SIZE = 100
 
 type State = 'idle' | 'walk' | 'attack'
@@ -25,13 +25,19 @@ export class Player {
   private _attackActive = false
 
   readonly spriteSet: string
+  readonly attackDamage: number
+  private readonly speed: number
+  private readonly attackCooldownMs: number
 
-  constructor(x: number, y: number, hp = 100, spriteSet = 'hero') {
+  constructor(x: number, y: number, hp = 100, spriteSet = 'hero', attackDamage = 4, speed = DEFAULT_SPEED, attackCooldownMs = DEFAULT_ATTACK_COOLDOWN) {
     this.x = x
     this.y = y
     this.hp = hp
     this.maxHp = hp
     this.spriteSet = spriteSet
+    this.attackDamage = attackDamage
+    this.speed = speed
+    this.attackCooldownMs = attackCooldownMs
   }
 
   async load() {
@@ -75,7 +81,7 @@ export class Player {
           this.state = 'idle'
           this.frameIndex = 0
           this._attackActive = false
-          this.cooldown = ATTACK_COOLDOWN
+          this.cooldown = this.attackCooldownMs
         }
       }
       return
@@ -84,7 +90,7 @@ export class Player {
     this._attackActive = false
 
     if (dx !== 0) {
-      this.x += dx * SPEED * dt
+      this.x += dx * this.speed * dt
       this.facingRight = dx > 0
       this.state = 'walk'
       this.frameTimer += ms
