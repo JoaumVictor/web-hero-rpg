@@ -1,5 +1,6 @@
 import { Player } from './entities/Player'
 import { Enemy } from './entities/Enemy'
+import { Projectile } from './entities/Projectile'
 
 // ── Canvas / World ────────────────────────────────────────────────
 const W = 800
@@ -35,6 +36,7 @@ export interface WaveMonsterDB {
   levelMult: number
   monster: {
     id: string
+    name: string
     hp: number
     attack: number
     defense: number
@@ -45,6 +47,8 @@ export interface WaveMonsterDB {
     baseXp: number
     coinDropMin: number
     coinDropMax: number
+    isBoss: boolean
+    sizeMultiplier: number
   }
 }
 
@@ -64,6 +68,7 @@ export interface HeroSlot {
   cooldownMs: number
   attackRange: number   // in grids (1 grid = 100px)
   spriteSet: string
+  heroClass: string
   level: number
   xp: number
   xpToNext: number
@@ -94,6 +99,14 @@ interface HeroDisplayInfo {
 interface Announcement {
   text: string; sub: string
   elapsed: number; duration: number
+  color?: string
+}
+
+interface SpellFlash {
+  wx: number; wy: number
+  radius: number
+  elapsed: number
+  duration: number
 }
 
 type Phase = 'intro' | 'playing' | 'dead' | 'victory'
@@ -113,6 +126,8 @@ export class Game {
   private players: Player[]
   private heroDisplay: HeroDisplayInfo[]
   private waves: Wave[]
+  private projectiles: Projectile[] = []
+  private spellFlashes: SpellFlash[] = []
 
   private phase: Phase = 'intro'
   private cameraX = 0
@@ -182,6 +197,7 @@ export class Game {
       cooldownMs: DEFAULT_COOLDOWN_MS,
       attackRange: 1,
       spriteSet: 'hero',
+      heroClass: 'warrior',
       level: 1,
       xp: 0,
       xpToNext: 100,
@@ -197,6 +213,7 @@ export class Game {
       s.speed,
       s.cooldownMs,
       s.attackRange * GRID_SIZE,
+      s.heroClass,
     ))
 
     this.heroDisplay = slots.map(s => ({
@@ -220,6 +237,9 @@ export class Game {
           m.monster.walkSpeed,
           Math.round(m.monster.attackCooldown * 1000),
           m.monster.attackRange,
+          m.monster.isBoss,
+          m.monster.sizeMultiplier,
+          m.monster.name,
         )),
         triggered: false,
         cleared: false,
@@ -273,6 +293,8 @@ export class Game {
         this.triggerWaves()
         this.autoMove(dt)
         this.resolveCombat()
+        this.tickProjectiles(dt)
+        this.tickSpellFlashes(dt)
         this.tickEnemies(dt)
         this.dropCoins()
         this.tickFloats(dt)
@@ -330,6 +352,16 @@ export class Game {
         e.x = spawnBase + wave.def.offsets[i]
         e.activate()
       })
+      const boss = wave.enemies.find(e => e.isBoss)
+      if (boss) {
+        this.announcement = {
+          text: `⚔ BOSS — ${boss.name}`,
+          sub: 'Prepare-se para a batalha final!',
+          elapsed: 0,
+          duration: 2800,
+          color: '#e74c3c',
+        }
+      }
     }
   }
 
@@ -370,22 +402,72 @@ export class Game {
   }
 
   private resolveCombat() {
+    const allEnemies = this.waves.flatMap(w => w.enemies).filter(e => !e.isDead && e.active)
+
     for (const p of this.players) {
       if (p.isDead || !p.attackActive) continue
       const hc = p.x + p.width / 2
-      for (const wave of this.waves) {
-        for (const e of wave.enemies) {
-          if (e.isDead) continue
-          const ec = e.x + e.width / 2
-          const facing = p.facingRight ? ec > hc : ec < hc
-          if (facing && Math.abs(hc - ec) <= p.attackRange) {
-            e.takeDamage(p.attackDamage)
-            p.markHitDealt()
-            break
+
+      if (p.heroClass === 'archer') {
+        // ranged: spawn projectile toward nearest enemy in range
+        const target = allEnemies
+          .filter(e => {
+            const ec = e.x + e.width / 2
+            return (p.facingRight ? ec > hc : ec < hc) && Math.abs(hc - ec) <= p.attackRange
+          })
+          .sort((a, b) => Math.abs((a.x + a.width / 2) - hc) - Math.abs((b.x + b.width / 2) - hc))[0]
+
+        if (target) {
+          this.spawnProjectile(p, target)
+          p.markHitDealt()
+        }
+      } else if (p.heroClass === 'mage') {
+        // AOE: hit ALL enemies within attackRange
+        let hit = false
+        for (const wave of this.waves) {
+          for (const e of wave.enemies) {
+            if (e.isDead) continue
+            const ec = e.x + e.width / 2
+            if (Math.abs(hc - ec) <= p.attackRange) {
+              e.takeDamage(p.attackDamage)
+              hit = true
+            }
+          }
+        }
+        if (hit) {
+          p.markHitDealt()
+          this.spellFlashes.push({
+            wx: hc,
+            wy: p.y + p.height / 2,
+            radius: p.attackRange,
+            elapsed: 0,
+            duration: 380,
+          })
+        }
+      } else {
+        // melee: instant damage
+        for (const wave of this.waves) {
+          for (const e of wave.enemies) {
+            if (e.isDead) continue
+            const ec = e.x + e.width / 2
+            const facing = p.facingRight ? ec > hc : ec < hc
+            if (facing && Math.abs(hc - ec) <= p.attackRange) {
+              e.takeDamage(p.attackDamage)
+              p.markHitDealt()
+              break
+            }
           }
         }
       }
     }
+  }
+
+  private spawnProjectile(p: Player, target: Enemy) {
+    const sx = p.facingRight ? p.x + p.width : p.x
+    const sy = p.y + p.height / 2
+    const tx = target.x + target.width / 2
+    const ty = target.y + target.height / 2
+    this.projectiles.push(new Projectile(sx, sy, tx, ty, p.attackDamage))
   }
 
   private tickEnemies(dt: number) {
@@ -409,6 +491,34 @@ export class Game {
           }
         }
       }
+    }
+  }
+
+  private tickSpellFlashes(dt: number) {
+    for (const f of this.spellFlashes) f.elapsed += dt * 1000
+    if (this.spellFlashes.length > 10) {
+      this.spellFlashes = this.spellFlashes.filter(f => f.elapsed < f.duration)
+    }
+  }
+
+  private tickProjectiles(dt: number) {
+    const allEnemies = this.waves.flatMap(w => w.enemies).filter(e => !e.isDead && e.active)
+    for (const proj of this.projectiles) {
+      if (!proj.active) continue
+      proj.update(dt)
+      if (proj.isOffScreen) { proj.active = false; continue }
+      for (const e of allEnemies) {
+        const ec = e.x + e.width / 2
+        const ey = e.y + e.height / 2
+        if (Math.hypot(proj.x - ec, proj.y - ey) < e.width / 2 + 10) {
+          e.takeDamage(proj.damage)
+          proj.active = false
+          break
+        }
+      }
+    }
+    if (this.projectiles.length > 60) {
+      this.projectiles = this.projectiles.filter(p => p.active)
     }
   }
 
@@ -478,6 +588,28 @@ export class Game {
     for (const wave of this.waves) {
       if (!wave.triggered) continue
       for (const e of wave.enemies) e.draw(ctx)
+    }
+
+    for (const sf of this.spellFlashes) {
+      if (sf.elapsed >= sf.duration) continue
+      const t = sf.elapsed / sf.duration
+      const r = 20 + (sf.radius - 20) * t
+      const alpha = Math.max(0, (1 - t) * 0.7)
+      ctx.save()
+      ctx.globalAlpha = alpha
+      ctx.strokeStyle = '#9b59b6'
+      ctx.lineWidth = 3
+      ctx.beginPath()
+      ctx.arc(sf.wx, sf.wy, r, 0, Math.PI * 2)
+      ctx.stroke()
+      ctx.globalAlpha = alpha * 0.25
+      ctx.fillStyle = '#8e44ad'
+      ctx.fill()
+      ctx.restore()
+    }
+
+    for (const proj of this.projectiles) {
+      if (proj.active) proj.draw(ctx)
     }
 
     for (const f of this.floats) {
@@ -641,6 +773,48 @@ export class Game {
       }
     }
 
+    // ── Boss HP bar ──────────────────────────────────────────────────
+    const boss = this.activeBoss()
+    if (boss) {
+      const BAR_X = 100
+      const BAR_Y = H - 52
+      const BAR_W = 600
+      const BAR_H = 20
+      const ratio = Math.max(0, boss.hp / boss.maxHp)
+
+      // background
+      ctx.fillStyle = 'rgba(0,0,0,0.75)'
+      ctx.fillRect(BAR_X - 4, BAR_Y - 20, BAR_W + 8, BAR_H + 28)
+
+      // boss name label
+      ctx.fillStyle = '#e74c3c'
+      ctx.font = 'bold 11px monospace'
+      ctx.textAlign = 'center'
+      ctx.fillText(boss.name.toUpperCase(), BAR_X + BAR_W / 2, BAR_Y - 6)
+
+      // bar bg
+      ctx.fillStyle = '#1a0000'
+      ctx.fillRect(BAR_X, BAR_Y, BAR_W, BAR_H)
+
+      // bar fill — gradient
+      const grad = ctx.createLinearGradient(BAR_X, BAR_Y, BAR_X + BAR_W * ratio, BAR_Y)
+      grad.addColorStop(0, '#7b0000')
+      grad.addColorStop(1, '#e74c3c')
+      ctx.fillStyle = grad
+      ctx.fillRect(BAR_X, BAR_Y, BAR_W * ratio, BAR_H)
+
+      // border
+      ctx.strokeStyle = '#600'
+      ctx.lineWidth = 1.5
+      ctx.strokeRect(BAR_X, BAR_Y, BAR_W, BAR_H)
+
+      // HP text
+      ctx.fillStyle = 'rgba(255,255,255,0.6)'
+      ctx.font = '9px monospace'
+      ctx.textAlign = 'center'
+      ctx.fillText(`${boss.hp} / ${boss.maxHp} HP`, BAR_X + BAR_W / 2, BAR_Y + BAR_H - 5)
+    }
+
     ctx.textAlign = 'left'
   }
 
@@ -669,7 +843,7 @@ export class Game {
     const alpha = t < 0.15 ? t / 0.15 : t > 0.75 ? 1 - (t - 0.75) / 0.25 : 1
     const ctx = this.ctx
     ctx.globalAlpha = alpha
-    ctx.fillStyle = '#2ecc71'
+    ctx.fillStyle = ann.color ?? '#2ecc71'
     ctx.font = 'bold 28px monospace'
     ctx.textAlign = 'center'
     ctx.fillText(ann.text, W / 2, H / 2 - 8)
@@ -678,6 +852,10 @@ export class Game {
     ctx.fillText(ann.sub, W / 2, H / 2 + 22)
     ctx.textAlign = 'left'
     ctx.globalAlpha = 1
+  }
+
+  private activeBoss(): Enemy | undefined {
+    return this.waves.flatMap(w => w.enemies).find(e => e.isBoss && !e.isDead && e.active)
   }
 
   private renderStatsBox(title: string, titleColor: string) {

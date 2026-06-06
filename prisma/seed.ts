@@ -48,6 +48,26 @@ async function main() {
     },
   })
 
+  // Third hero — mage (AOE, expensive)
+  await db.hero.upsert({
+    where: { id: 'hero-mage' },
+    update: {},
+    create: {
+      id:             'hero-mage',
+      name:           'Mago',
+      spriteSet:      'hero',
+      heroClass:      'mage',
+      cost:           300,
+      hp:             14,
+      attack:         7,
+      defense:        0,
+      attackCooldown: 2.8,
+      walkSpeed:      180,
+      attackRange:    2,
+      isActive:       true,
+    },
+  })
+
   // Default zombie monster
   await db.monster.upsert({
     where: { id: 'monster-zombie' },
@@ -286,6 +306,70 @@ async function main() {
       create: node,
     })
   }
+
+  // ── Boss monster ─────────────────────────────────────────────────
+  await db.monster.upsert({
+    where: { id: 'monster-zombie-king' },
+    update: {},
+    create: {
+      id:             'monster-zombie-king',
+      name:           'Rei dos Zumbis',
+      spriteSet:      'zombie',
+      monsterType:    'UNDEAD',
+      isBoss:         true,
+      sizeMultiplier: 2.0,
+      hp:             80,
+      attack:         3,
+      defense:        0,
+      attackCooldown: 3.0,
+      walkSpeed:      28,
+      attackRange:    1,
+      coinDropMin:    15,
+      coinDropMax:    25,
+      baseXp:         60,
+    },
+  })
+
+  // ── Boss round ────────────────────────────────────────────────────
+  await db.round.upsert({
+    where: { id: 'round-boss-1' },
+    update: {},
+    create: { id: 'round-boss-1', number: 13, name: 'Boss — Rei dos Zumbis' },
+  })
+
+  const bosWaveDefs = [
+    { id: 'wave-b1-1', roundId: 'round-boss-1', order: 1, triggerX: 640 },
+    { id: 'wave-b1-2', roundId: 'round-boss-1', order: 2, triggerX: 1300 },
+    { id: 'wave-b1-3', roundId: 'round-boss-1', order: 3, triggerX: 2000 },
+  ]
+  for (const w of bosWaveDefs) {
+    await db.wave.upsert({ where: { id: w.id }, update: {}, create: w })
+  }
+
+  const bossWaveMonsters = [
+    { id: 'wm-b1-1-1', waveId: 'wave-b1-1', monsterId: 'monster-zombie', offsetX: 0,   levelMult: 1.8 },
+    { id: 'wm-b1-1-2', waveId: 'wave-b1-1', monsterId: 'monster-zombie', offsetX: 220, levelMult: 1.8 },
+    { id: 'wm-b1-2-1', waveId: 'wave-b1-2', monsterId: 'monster-zombie', offsetX: 0,   levelMult: 1.9 },
+    { id: 'wm-b1-2-2', waveId: 'wave-b1-2', monsterId: 'monster-zombie', offsetX: 220, levelMult: 1.9 },
+    { id: 'wm-b1-2-3', waveId: 'wave-b1-2', monsterId: 'monster-zombie', offsetX: 440, levelMult: 1.9 },
+    { id: 'wm-b1-3-1', waveId: 'wave-b1-3', monsterId: 'monster-zombie-king', offsetX: 0, levelMult: 1.0 },
+  ]
+  for (const wm of bossWaveMonsters) {
+    await db.waveMonster.upsert({ where: { id: wm.id }, update: {}, create: wm })
+  }
+
+  await db.level.upsert({
+    where: { id: 'level-4' },
+    update: {},
+    create: {
+      id:               'level-4',
+      zoneId:           'zone-1',
+      name:             'Fase 4 — O Rei',
+      number:           4,
+      roundId:          'round-boss-1',
+      recommendedLevel: 4,
+    },
+  })
 
   console.log('Seed concluído')
 }

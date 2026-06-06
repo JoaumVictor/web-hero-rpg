@@ -10,8 +10,8 @@ const DRAW_SIZE = 100
 export class Enemy {
   x: number
   y: number
-  readonly width = DRAW_SIZE
-  readonly height = DRAW_SIZE
+  readonly width: number
+  readonly height: number
   hp: number
   readonly maxHp: number
   facingRight = false
@@ -25,6 +25,9 @@ export class Enemy {
   readonly spriteSet: string
   readonly baseXp: number
   readonly monsterId: string | undefined
+  readonly isBoss: boolean
+  readonly sizeMultiplier: number
+  readonly name: string
   private readonly walkSpeed: number
   private readonly attackCooldownMs: number
   private readonly attackRangePx: number
@@ -39,6 +42,9 @@ export class Enemy {
     walkSpeed = DEFAULT_WALK_SPEED,
     attackCooldownMs = DEFAULT_ATTACK_COOLDOWN_MS,
     attackRange = DEFAULT_ATTACK_RANGE,
+    isBoss = false,
+    sizeMultiplier = 1.0,
+    name = '',
   ) {
     this.x = x
     this.y = y
@@ -47,9 +53,14 @@ export class Enemy {
     this.spriteSet = spriteSet
     this.baseXp = baseXp
     this.monsterId = monsterId
+    this.isBoss = isBoss
+    this.sizeMultiplier = sizeMultiplier
+    this.name = name
     this.walkSpeed = walkSpeed
     this.attackCooldownMs = attackCooldownMs
     this.attackRangePx = attackRange * GRID_SIZE
+    this.width = Math.round(DRAW_SIZE * sizeMultiplier)
+    this.height = Math.round(DRAW_SIZE * sizeMultiplier)
   }
 
   async load() {
@@ -98,17 +109,20 @@ export class Enemy {
     const frame = frames[Math.min(this.frameIndex, frames.length - 1)]
     if (!frame) return
 
+    // Boss sprites grow upward from ground; shift y so base stays at ground
+    const drawY = this.y - (this.height - DRAW_SIZE)
+
     ctx.save()
     if (this.facingRight) {
-      ctx.drawImage(frame, this.x, this.y, this.width, this.height)
+      ctx.drawImage(frame, this.x, drawY, this.width, this.height)
     } else {
-      ctx.translate(this.x + this.width, this.y)
+      ctx.translate(this.x + this.width, drawY)
       ctx.scale(-1, 1)
       ctx.drawImage(frame, 0, 0, this.width, this.height)
     }
     ctx.restore()
 
-    drawHpBar(ctx, this.x, this.y - 14, this.width, this.hp / this.maxHp, '#e74c3c')
+    drawHpBar(ctx, this.x, drawY - 14, this.width, this.hp / this.maxHp, this.isBoss ? '#c0392b' : '#e74c3c')
   }
 }
 

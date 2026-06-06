@@ -37,6 +37,7 @@ const RARITY_COLORS: Record<string, string> = {
 type HeroApiItem = {
   name: string
   spriteSet: string
+  heroClass: string
   hp: number; attack: number; defense: number; attackCooldown: number; walkSpeed: number; attackRange: number
   instance: {
     id: string; level: number; xp: number; groupPosition: number | null
@@ -98,6 +99,7 @@ async function loadGroupData(playerId: string): Promise<{ slots: HeroSlot[]; bon
         cooldownMs: stats.attackCooldown * 1000,
         attackRange: h.attackRange,   // in grids — not scaled by level or equipment
         spriteSet: h.spriteSet ?? 'hero',
+        heroClass: h.heroClass ?? 'warrior',
         level: h.instance!.level,
         xp: h.instance!.xp,
         xpToNext: Math.round(100 * Math.pow(h.instance!.level, 1.5)),
