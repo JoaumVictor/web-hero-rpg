@@ -1,12 +1,9 @@
-import { loadFrames } from '../renderer/sprites'
+import { loadSpriteSet, SpriteSet } from '@/lib/spriteLoader'
 
-const WALK_PATHS = Array.from({ length: 6 }, (_, i) => `/assets/characters/hero/hero-walk-${i + 1}.png`)
-const ATTACK_PATHS = Array.from({ length: 3 }, (_, i) => `/assets/characters/hero/hero-attack-${i + 1}.png`)
-
-const SPEED = 220          // px/s
-const FRAME_MS = 100       // ms per animation frame
-const ATTACK_COOLDOWN = 1500 // ms between attacks
-const DRAW_SIZE = 100      // render at 100x100 (source is 200x200)
+const SPEED = 220
+const FRAME_MS = 100
+const ATTACK_COOLDOWN = 1500
+const DRAW_SIZE = 100
 
 type State = 'idle' | 'walk' | 'attack'
 
@@ -19,8 +16,7 @@ export class Player {
   readonly maxHp: number
   facingRight = true
 
-  private walkFrames: HTMLImageElement[] = []
-  private attackFrames: HTMLImageElement[] = []
+  private sprites: SpriteSet | null = null
   private state: State = 'idle'
   private frameIndex = 0
   private frameTimer = 0
@@ -28,18 +24,18 @@ export class Player {
   private hitDealt = false
   private _attackActive = false
 
-  constructor(x: number, y: number, hp = 100) {
+  readonly spriteSet: string
+
+  constructor(x: number, y: number, hp = 100, spriteSet = 'hero') {
     this.x = x
     this.y = y
     this.hp = hp
     this.maxHp = hp
+    this.spriteSet = spriteSet
   }
 
   async load() {
-    [this.walkFrames, this.attackFrames] = await Promise.all([
-      loadFrames(WALK_PATHS),
-      loadFrames(ATTACK_PATHS),
-    ])
+    this.sprites = await loadSpriteSet('heroes', this.spriteSet)
   }
 
   get isDead() { return this.hp <= 0 }
@@ -57,7 +53,7 @@ export class Player {
 
   markHitDealt() {
     this.hitDealt = true
-    this._attackActive = false  // cut the hitbox immediately — prevents multi-hit in same frame window
+    this._attackActive = false
   }
 
   takeDamage(amount: number) {
@@ -73,11 +69,9 @@ export class Player {
       if (this.frameTimer >= FRAME_MS) {
         this.frameTimer = 0
         this.frameIndex++
-
-        // hitbox active only on frame 1 and only once per swing
+        const attackFrames = this.sprites?.attack ?? []
         this._attackActive = this.frameIndex === 1 && !this.hitDealt
-
-        if (this.frameIndex >= this.attackFrames.length) {
+        if (this.frameIndex >= attackFrames.length) {
           this.state = 'idle'
           this.frameIndex = 0
           this._attackActive = false
@@ -96,7 +90,10 @@ export class Player {
       this.frameTimer += ms
       if (this.frameTimer >= FRAME_MS) {
         this.frameTimer = 0
-        this.frameIndex = (this.frameIndex + 1) % this.walkFrames.length
+        const walkFrames = this.sprites?.walk ?? []
+        this.frameIndex = walkFrames.length > 0
+          ? (this.frameIndex + 1) % walkFrames.length
+          : 0
       }
     } else {
       this.state = 'idle'
@@ -105,7 +102,8 @@ export class Player {
   }
 
   draw(ctx: CanvasRenderingContext2D) {
-    const frames = this.state === 'attack' ? this.attackFrames : this.walkFrames
+    if (!this.sprites) return
+    const frames = this.state === 'attack' ? this.sprites.attack : this.sprites.walk
     const frame = frames[Math.min(this.frameIndex, frames.length - 1)]
     if (!frame) return
 

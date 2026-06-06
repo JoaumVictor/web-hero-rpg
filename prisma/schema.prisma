@@ -6,7 +6,17 @@ datasource db {
   provider = "postgresql"
 }
 
-// ── Player progression ────────────────────────────────────────────
+// ── Player account ────────────────────────────────────────────────
+model Player {
+  id             String          @id @default(cuid())
+  email          String          @unique
+  coins          Int             @default(0)
+  heroInstances  HeroInstance[]
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+}
+
+// Legacy: kept during migration, will be removed after Player is fully rolled out
 model PlayerProgress {
   id        String   @id @default(cuid())
   sessionId String   @unique
@@ -16,36 +26,62 @@ model PlayerProgress {
 
 // ── Game config: heroes ───────────────────────────────────────────
 model Hero {
-  id             String   @id @default(cuid())
+  id             String         @id @default(cuid())
   name           String
-  spritePath     String   @default("hero")
-  level          Int      @default(1)
-  hp             Int      @default(26)
-  attack         Int      @default(4)
-  defense        Int      @default(0)
-  attackCooldown Float    @default(1.5)
-  walkSpeed      Int      @default(220)
-  groupPosition  Int      @default(0)
-  isActive       Boolean  @default(false)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  spriteSet      String         @default("hero")
+  heroClass      String         @default("warrior")
+  cost           Int            @default(0)
+  level          Int            @default(1)
+  hp             Int            @default(26)
+  attack         Int            @default(4)
+  defense        Int            @default(0)
+  attackCooldown Float          @default(1.5)
+  walkSpeed      Int            @default(220)
+  attackRange    Int            @default(1)
+  groupPosition  Int            @default(0)
+  isActive       Boolean        @default(false)
+  instances      HeroInstance[]
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+}
+
+model HeroInstance {
+  id            String   @id @default(cuid())
+  playerId      String
+  player        Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  heroId        String
+  hero          Hero     @relation(fields: [heroId], references: [id])
+  level         Int      @default(1)
+  xp            Int      @default(0)
+  groupPosition Int?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([playerId, heroId])
 }
 
 // ── Game config: monsters ─────────────────────────────────────────
 model Monster {
-  id             String        @id @default(cuid())
-  name           String
-  spritePath     String        @default("zombie")
-  hp             Int           @default(12)
-  attack         Int           @default(1)
-  defense        Int           @default(0)
-  attackCooldown Float         @default(2.2)
-  walkSpeed      Int           @default(42)
-  coinDropMin    Int           @default(1)
-  coinDropMax    Int           @default(2)
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
-  waveEntries    WaveMonster[]
+  id                  String        @id @default(cuid())
+  name                String
+  spriteSet           String        @default("zombie")
+  monsterType         String        @default("UNDEAD")
+  isBoss              Boolean       @default(false)
+  sizeMultiplier      Float         @default(1.0)
+  attackBehavior      String        @default("MELEE")
+  secondaryBehavior   String?
+  behaviorSwitchHpPct Float?
+  hp                  Int           @default(12)
+  attack              Int           @default(1)
+  defense             Int           @default(0)
+  attackCooldown      Float         @default(2.2)
+  walkSpeed           Int           @default(42)
+  attackRange         Int           @default(1)
+  coinDropMin         Int           @default(1)
+  coinDropMax         Int           @default(2)
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+  waveEntries         WaveMonster[]
 }
 
 // ── Game config: rounds ───────────────────────────────────────────
@@ -82,14 +118,14 @@ model WaveMonster {
   levelMult Float   @default(1.0)
 }
 
-// ── Items / inventory ─────────────────────────────────────────────
+// ── Items ─────────────────────────────────────────────────────────
 model Item {
-  id          String    @id @default(cuid())
+  id          String   @id @default(cuid())
   name        String
   description String?
   type        ItemType
-  rarity      Rarity    @default(COMMON)
-  statBonus   Json      @default("{}")
+  rarity      Rarity   @default(COMMON)
+  statBonus   Json     @default("{}")
   iconUrl     String?
 }
 

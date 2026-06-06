@@ -1,6 +1,5 @@
 import { Player } from './entities/Player'
 import { Enemy } from './entities/Enemy'
-import { loadImage } from './renderer/sprites'
 
 // ── Canvas / World ────────────────────────────────────────────────
 const W = 800
@@ -109,9 +108,8 @@ export class Game {
   async start() {
     await Promise.all([
       this.player.load(),
-      loadImage('/assets/characters/zombie/zombie-walk-1.png'),
+      ...this.waves.flatMap(w => w.enemies.map(e => e.load())),
     ])
-    await Promise.all(this.waves.flatMap(w => w.enemies.map(e => e.load())))
     if (this.destroyed) return   // destroyed while loading — do not start RAF
     this.phase = 'intro'
     this.lastTime = performance.now()

@@ -2,30 +2,42 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 
 export async function GET(req: NextRequest) {
+  const playerId = req.nextUrl.searchParams.get('player')
   const sessionId = req.nextUrl.searchParams.get('session')
-  if (!sessionId) return NextResponse.json({ coins: 0 })
 
   try {
-    const row = await db.playerProgress.findUnique({ where: { sessionId } })
-    return NextResponse.json({ coins: row?.coins ?? 0 })
-  } catch {
-    return NextResponse.json({ coins: 0 })
-  }
+    if (playerId) {
+      const row = await db.player.findUnique({ where: { id: playerId } })
+      return NextResponse.json({ coins: row?.coins ?? 0 })
+    }
+    if (sessionId) {
+      const row = await db.playerProgress.findUnique({ where: { sessionId } })
+      return NextResponse.json({ coins: row?.coins ?? 0 })
+    }
+  } catch {}
+
+  return NextResponse.json({ coins: 0 })
 }
 
 export async function POST(req: NextRequest) {
   try {
-    const { session, coins } = (await req.json()) as { session: string; coins: number }
-    if (!session || typeof coins !== 'number') {
-      return NextResponse.json({ ok: false }, { status: 400 })
+    const body = await req.json()
+    const coins = typeof body.coins === 'number' ? body.coins : 0
+
+    if (body.player) {
+      await db.player.update({ where: { id: body.player }, data: { coins } })
+      return NextResponse.json({ ok: true })
     }
-    await db.playerProgress.upsert({
-      where:  { sessionId: session },
-      update: { coins },
-      create: { sessionId: session, coins },
-    })
-    return NextResponse.json({ ok: true })
-  } catch {
-    return NextResponse.json({ ok: false }, { status: 500 })
-  }
+
+    if (body.session) {
+      await db.playerProgress.upsert({
+        where: { sessionId: body.session },
+        update: { coins },
+        create: { sessionId: body.session, coins },
+      })
+      return NextResponse.json({ ok: true })
+    }
+  } catch {}
+
+  return NextResponse.json({ ok: false }, { status: 400 })
 }

@@ -1,8 +1,7 @@
-import { loadImage } from '../renderer/sprites'
+import { loadSpriteSet, SpriteSet } from '@/lib/spriteLoader'
 
-const SPRITE = '/assets/characters/zombie/zombie-walk-1.png'
 const SPEED = 42
-const MELEE_RANGE = 90    // center-to-center to attack player
+const MELEE_RANGE = 90
 const ATTACK_COOLDOWN = 2200
 const ATTACK_DAMAGE = 1
 const DRAW_SIZE = 100
@@ -15,31 +14,31 @@ export class Enemy {
   hp: number
   readonly maxHp: number
   facingRight = false
-  active = false           // starts inactive, activates when player approaches
+  active = false
 
-  private sprite: HTMLImageElement | null = null
+  private sprites: SpriteSet | null = null
   private cooldown = 0
+  private frameIndex = 0
+  private frameTimer = 0
 
-  constructor(x: number, y: number, hp = 80) {
+  readonly spriteSet: string
+
+  constructor(x: number, y: number, hp = 80, spriteSet = 'zombie') {
     this.x = x
     this.y = y
     this.hp = hp
     this.maxHp = hp
+    this.spriteSet = spriteSet
   }
 
   async load() {
-    this.sprite = await loadImage(SPRITE)
+    this.sprites = await loadSpriteSet('creatures', this.spriteSet)
   }
 
   get isDead() { return this.hp <= 0 }
-
   activate() { this.active = true }
+  takeDamage(amount: number) { this.hp = Math.max(0, this.hp - amount) }
 
-  takeDamage(amount: number) {
-    this.hp = Math.max(0, this.hp - amount)
-  }
-
-  // returns damage dealt to player this tick (0 if none)
   update(dt: number, playerX: number, playerW: number): number {
     if (this.isDead || !this.active) return 0
 
@@ -52,6 +51,16 @@ export class Enemy {
       const dir = pc < mc ? -1 : 1
       this.x += dir * SPEED * dt
       this.facingRight = dir > 0
+
+      // walk animation
+      this.frameTimer += ms
+      if (this.frameTimer >= 120) {
+        this.frameTimer = 0
+        const walkFrames = this.sprites?.walk ?? []
+        this.frameIndex = walkFrames.length > 0
+          ? (this.frameIndex + 1) % walkFrames.length
+          : 0
+      }
     }
 
     this.cooldown = Math.max(0, this.cooldown - ms)
@@ -63,15 +72,19 @@ export class Enemy {
   }
 
   draw(ctx: CanvasRenderingContext2D) {
-    if (!this.sprite || this.isDead) return
+    if (!this.sprites || this.isDead) return
+
+    const frames = this.sprites.walk
+    const frame = frames[Math.min(this.frameIndex, frames.length - 1)]
+    if (!frame) return
 
     ctx.save()
     if (this.facingRight) {
-      ctx.drawImage(this.sprite, this.x, this.y, this.width, this.height)
+      ctx.drawImage(frame, this.x, this.y, this.width, this.height)
     } else {
       ctx.translate(this.x + this.width, this.y)
       ctx.scale(-1, 1)
-      ctx.drawImage(this.sprite, 0, 0, this.width, this.height)
+      ctx.drawImage(frame, 0, 0, this.width, this.height)
     }
     ctx.restore()
 
