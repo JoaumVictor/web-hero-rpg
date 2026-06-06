@@ -1,0 +1,93 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id         String      @id @default(cuid())
+  email      String      @unique
+  createdAt  DateTime    @default(now())
+  characters Character[]
+}
+
+model Character {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name      String
+  level     Int       @default(1)
+  xp        Int       @default(0)
+  hpMax     Int       @default(100)
+  attack    Int       @default(10)
+  defense   Int       @default(5)
+  gold      Int       @default(0)
+  createdAt DateTime  @default(now())
+
+  inventory     InventoryItem[]
+  stageProgress StageProgress[]
+}
+
+model Item {
+  id          String          @id @default(cuid())
+  name        String
+  description String?
+  type        ItemType
+  rarity      Rarity          @default(COMMON)
+  statBonus   Json            @default("{}")
+  iconUrl     String?
+  inventory   InventoryItem[]
+}
+
+model InventoryItem {
+  id          String    @id @default(cuid())
+  characterId String
+  character   Character @relation(fields: [characterId], references: [id], onDelete: Cascade)
+  itemId      String
+  item        Item      @relation(fields: [itemId], references: [id])
+  quantity    Int       @default(1)
+  slot        String?
+
+  @@unique([characterId, itemId])
+}
+
+model Stage {
+  id          String          @id @default(cuid())
+  name        String
+  order       Int             @unique
+  tilemap     Json
+  enemySpawns Json
+  createdAt   DateTime        @default(now())
+  progress    StageProgress[]
+}
+
+model StageProgress {
+  id          String    @id @default(cuid())
+  characterId String
+  character   Character @relation(fields: [characterId], references: [id], onDelete: Cascade)
+  stageId     String
+  stage       Stage     @relation(fields: [stageId], references: [id])
+  completedAt DateTime  @default(now())
+  stars       Int       @default(0)
+
+  @@unique([characterId, stageId])
+}
+
+enum ItemType {
+  WEAPON
+  ARMOR
+  HELMET
+  BOOTS
+  ACCESSORY
+  CONSUMABLE
+}
+
+enum Rarity {
+  COMMON
+  UNCOMMON
+  RARE
+  EPIC
+  LEGENDARY
+}
