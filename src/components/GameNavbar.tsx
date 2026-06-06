@@ -1,3 +1,5 @@
+import Link from 'next/link'
+
 interface Props {
   chestOpen: boolean
   inventoryOpen: boolean
@@ -27,6 +29,13 @@ export default function GameNavbar({
         label="MOCHILA"
         icon={<BackpackIcon />}
       />
+      <Link
+        href="/map"
+        className="flex items-center gap-1.5 px-3 py-1.5 rounded border text-xs font-mono tracking-wide transition-all border-gray-700 text-gray-500 hover:border-gray-500 hover:text-gray-300"
+      >
+        <MapIcon />
+        MAPA
+      </Link>
     </div>
   )
 }
@@ -81,6 +90,16 @@ function BackpackIcon() {
       <rect x="1" y="5" width="12" height="10" rx="2" />
       <path d="M4 5 Q7 2 10 5" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" />
       <rect x="5" y="9" width="4" height="2.5" rx="1" fill="#111827" />
+    </svg>
+  )
+}
+
+function MapIcon() {
+  return (
+    <svg width="14" height="12" viewBox="0 0 16 14" fill="currentColor">
+      <polygon points="0,1 5,3 11,0 16,2 16,13 11,11 5,14 0,12" opacity="0.9" />
+      <line x1="5" y1="3" x2="5" y2="14" stroke="#111827" strokeWidth="1" />
+      <line x1="11" y1="0" x2="11" y2="11" stroke="#111827" strokeWidth="1" />
     </svg>
   )
 }

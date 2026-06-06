@@ -9,28 +9,64 @@ const WORLD_WIDTH = 4000
 
 // ── Balance ───────────────────────────────────────────────────────
 const WALK_DX = 0.65      // 0.65 × 220 ≈ 143 px/s
-const INTRO_DX = 0.30     // slow walk during title card
+const INTRO_DX = 0.30
 const AUTO_RANGE = 115    // center-to-center distance to auto-attack
+const HERO_GAP = 80       // px between heroes in formation
 const ENEMY_HP = 12
 
-// defaults — overridden by heroStats when provided
 const DEFAULT_HP = 26
 const DEFAULT_ATTACK = 4
 const DEFAULT_SPEED = 220
 const DEFAULT_COOLDOWN_MS = 1500
 
 // ── Waves ─────────────────────────────────────────────────────────
-// triggerX: hero must reach this world-x to spawn the wave
-// offsets:  each entry = one enemy, offset from the right-edge spawn point
 interface WaveDef { triggerX: number; offsets: number[] }
 
 const WAVE_DEFS: WaveDef[] = [
-  { triggerX: 640,  offsets: [0] },          // wave 1 – 1 zombie
-  { triggerX: 1100, offsets: [0] },          // wave 2 – 1 zombie
-  { triggerX: 1560, offsets: [0, 220] },     // wave 3 – 2 zombies
-  { triggerX: 2020, offsets: [0] },          // wave 4 – 1 zombie
-  { triggerX: 2480, offsets: [0, 240] },     // wave 5 – 2 zombies
+  { triggerX: 640,  offsets: [0] },
+  { triggerX: 1100, offsets: [0] },
+  { triggerX: 1560, offsets: [0, 220] },
+  { triggerX: 2020, offsets: [0] },
+  { triggerX: 2480, offsets: [0, 240] },
 ]
+
+export interface WaveMonsterDB {
+  offsetX: number
+  levelMult: number
+  monster: {
+    id: string
+    hp: number
+    attack: number
+    defense: number
+    attackCooldown: number
+    walkSpeed: number
+    attackRange: number
+    spriteSet: string
+    baseXp: number
+    coinDropMin: number
+    coinDropMax: number
+  }
+}
+
+export interface WaveDefDB {
+  id: string
+  triggerX: number
+  order: number
+  monsters: WaveMonsterDB[]
+}
+
+// ── Hero slot — used to create Player instances ───────────────────
+export interface HeroSlot {
+  name: string
+  hp: number
+  attack: number
+  speed: number
+  cooldownMs: number
+  spriteSet: string
+  level: number
+  xp: number
+  xpToNext: number
+}
 
 // ── Internal types ────────────────────────────────────────────────
 interface Wave {
@@ -43,11 +79,11 @@ interface Wave {
 interface FloatingText {
   wx: number; wy: number
   text: string; color: string
-  size?: number       // font size px, default 16
-  life: number        // 1 → 0
+  size?: number
+  life: number
 }
 
-interface HeroInfo {
+interface HeroDisplayInfo {
   name: string
   level: number
   xp: number
@@ -73,7 +109,8 @@ export class Game {
   private canvas: HTMLCanvasElement
   private ctx: CanvasRenderingContext2D
 
-  private player: Player
+  private players: Player[]
+  private heroDisplay: HeroDisplayInfo[]
   private waves: Wave[]
 
   private phase: Phase = 'intro'
@@ -89,6 +126,8 @@ export class Game {
   totalCoins = 0
   monstersKilled = 0
   wavesCleared = 0
+  private playTimeMs = 0
+  private levelName: string | null = null
 
   private rafId = 0
   private lastTime = 0
@@ -96,11 +135,22 @@ export class Game {
   onRestart?: () => void
   onCoinsChange?: (total: number) => void
   onKill?: (info: { x: number; y: number; baseXp: number; monsterId?: string }) => void
+  onLevelComplete?: (stats: { monstersKilled: number; heroSurvived: boolean; timeMs: number }) => void
 
-  private heroInfo: HeroInfo[] = []
+  private destroyed = false
+  private restartCalled = false
 
-  setHeroInfo(heroes: HeroInfo[]) {
-    this.heroInfo = heroes
+  setLevelName(name: string) {
+    this.levelName = name
+  }
+
+  // Called after kills to sync XP/level data for HUD
+  setHeroInfo(heroes: { name: string; level: number; xp: number; xpToNext: number }[]) {
+    heroes.forEach((h, i) => {
+      if (this.heroDisplay[i]) {
+        this.heroDisplay[i] = { name: h.name, level: h.level, xp: h.xp, xpToNext: h.xpToNext }
+      }
+    })
   }
 
   addFloat(wx: number, wy: number, text: string, color: string, size = 16) {
@@ -108,38 +158,82 @@ export class Game {
     this.floats.push({ wx, wy, text, color, size, life: 1 })
   }
 
-  private destroyed = false
-  private restartCalled = false
-
-  constructor(canvas: HTMLCanvasElement, initialCoins = 0, heroStats?: { hp: number; attack: number; walkSpeed: number; attackCooldown: number }) {
+  constructor(
+    canvas: HTMLCanvasElement,
+    initialCoins = 0,
+    waveDefs?: WaveDefDB[] | null,
+    heroSlots?: HeroSlot[],
+  ) {
     this.canvas = canvas
     canvas.width = W
     canvas.height = H
     this.ctx = canvas.getContext('2d')!
 
-    const hp = heroStats?.hp ?? DEFAULT_HP
-    const attack = heroStats?.attack ?? DEFAULT_ATTACK
-    const speed = heroStats?.walkSpeed ?? DEFAULT_SPEED
-    const cooldownMs = heroStats ? heroStats.attackCooldown * 1000 : DEFAULT_COOLDOWN_MS
-
-    this.player = new Player(60, GROUND_Y - 100, hp, 'hero', attack, speed, cooldownMs)
     this.totalCoins = initialCoins
 
-    // enemies created with placeholder x=0 — real position set on wave trigger
-    this.waves = WAVE_DEFS.map(def => ({
-      def,
-      enemies: def.offsets.map(() => new Enemy(0, GROUND_Y - 100, ENEMY_HP, 'zombie', 8, 'monster-zombie')),
-      triggered: false,
-      cleared: false,
+    // ── Build player roster ──────────────────────────────────────
+    const slots: HeroSlot[] = heroSlots && heroSlots.length > 0 ? heroSlots : [{
+      name: 'Herói',
+      hp: DEFAULT_HP,
+      attack: DEFAULT_ATTACK,
+      speed: DEFAULT_SPEED,
+      cooldownMs: DEFAULT_COOLDOWN_MS,
+      spriteSet: 'hero',
+      level: 1,
+      xp: 0,
+      xpToNext: 100,
+    }]
+
+    // Front hero (i=0) is furthest right (x=200); each subsequent hero is 80px behind
+    this.players = slots.map((s, i) => new Player(
+      200 - i * HERO_GAP,
+      GROUND_Y - 100,
+      s.hp,
+      s.spriteSet,
+      s.attack,
+      s.speed,
+      s.cooldownMs,
+    ))
+
+    this.heroDisplay = slots.map(s => ({
+      name: s.name,
+      level: s.level,
+      xp: s.xp,
+      xpToNext: s.xpToNext,
     }))
+
+    // ── Build waves ──────────────────────────────────────────────
+    if (waveDefs && waveDefs.length > 0) {
+      this.waves = waveDefs.map(wd => ({
+        def: { triggerX: wd.triggerX, offsets: wd.monsters.map(m => m.offsetX) },
+        enemies: wd.monsters.map(m => new Enemy(
+          0,
+          GROUND_Y - 100,
+          Math.round(m.monster.hp * m.levelMult),
+          m.monster.spriteSet,
+          m.monster.baseXp,
+          m.monster.id,
+          m.monster.walkSpeed,
+        )),
+        triggered: false,
+        cleared: false,
+      }))
+    } else {
+      this.waves = WAVE_DEFS.map(def => ({
+        def,
+        enemies: def.offsets.map(() => new Enemy(0, GROUND_Y - 100, ENEMY_HP, 'zombie', 8, 'monster-zombie')),
+        triggered: false,
+        cleared: false,
+      }))
+    }
   }
 
   async start() {
     await Promise.all([
-      this.player.load(),
+      ...this.players.map(p => p.load()),
       ...this.waves.flatMap(w => w.enemies.map(e => e.load())),
     ])
-    if (this.destroyed) return   // destroyed while loading — do not start RAF
+    if (this.destroyed) return
     this.phase = 'intro'
     this.lastTime = performance.now()
     this.rafId = requestAnimationFrame(this.loop)
@@ -148,7 +242,7 @@ export class Game {
   // ── Loop ────────────────────────────────────────────────────────
 
   private loop = (now: number) => {
-    if (this.destroyed) return   // safeguard against orphaned RAFs
+    if (this.destroyed) return
     const dt = Math.min((now - this.lastTime) / 1000, 0.05)
     this.lastTime = now
     this.update(dt)
@@ -162,13 +256,14 @@ export class Game {
     switch (this.phase) {
       case 'intro':
         this.introElapsed += dt * 1000
-        this.player.update(dt, INTRO_DX)
-        this.clampPlayer()
+        for (const p of this.players) p.update(dt, INTRO_DX)
+        this.clampPlayers()
         this.cameraX = this.calcCamera()
         if (this.introElapsed >= 2600) this.phase = 'playing'
         break
 
       case 'playing':
+        this.playTimeMs += dt * 1000
         this.triggerWaves()
         this.autoMove(dt)
         this.resolveCombat()
@@ -177,17 +272,22 @@ export class Game {
         this.tickFloats(dt)
         this.tickAnnouncement(dt)
         this.cameraX = this.calcCamera()
-        if (this.player.isDead) {
+        if (this.players.every(p => p.isDead)) {
           this.phase = 'dead'
           this.deadElapsed = 0
         }
         if (this.waves.every(w => w.cleared)) {
           this.phase = 'victory'
           this.victoryElapsed = 0
+          const anyAlive = this.players.some(p => !p.isDead)
+          this.onLevelComplete?.({
+            monstersKilled: this.monstersKilled,
+            heroSurvived: anyAlive,
+            timeMs: this.playTimeMs,
+          })
         }
         break
 
-      // ── dead: freeze everything, show stats overlay ──
       case 'dead':
         this.deadElapsed += dt * 1000
         if (this.deadElapsed >= 5000 && !this.restartCalled) {
@@ -196,15 +296,16 @@ export class Game {
         }
         break
 
-      // ── victory: hero keeps running behind stats overlay ──
       case 'victory':
         this.victoryElapsed += dt * 1000
         if (this.victoryElapsed >= 6000 && !this.restartCalled) {
           this.restartCalled = true
           this.onRestart?.()
         }
-        this.player.update(dt, WALK_DX)
-        this.clampPlayer()
+        for (const p of this.players) {
+          if (!p.isDead) p.update(dt, WALK_DX)
+        }
+        this.clampPlayers()
         this.cameraX = this.calcCamera()
         break
     }
@@ -213,10 +314,11 @@ export class Game {
   // ── Playing sub-steps ───────────────────────────────────────────
 
   private triggerWaves() {
+    const front = this.frontPlayer()
+    if (!front) return
     for (const wave of this.waves) {
-      if (wave.triggered || this.player.x < wave.def.triggerX) continue
+      if (wave.triggered || front.x < wave.def.triggerX) continue
       wave.triggered = true
-      // spawn enemies just off the right edge of the camera
       const spawnBase = this.cameraX + W + 50
       wave.enemies.forEach((e, i) => {
         e.x = spawnBase + wave.def.offsets[i]
@@ -226,45 +328,68 @@ export class Game {
   }
 
   private autoMove(dt: number) {
-    const hc = this.player.x + this.player.width / 2
-    const target = this.waves
+    const activeEnemies = this.waves
       .flatMap(w => w.enemies)
       .filter(e => !e.isDead && e.active)
-      .map(e => ({ e, d: Math.abs(e.x + e.width / 2 - hc) }))
-      .filter(({ e, d }) => e.x + e.width / 2 > hc && d <= AUTO_RANGE)
-      .sort((a, b) => a.d - b.d)[0]?.e
 
-    if (target) {
-      this.player.startAttack()
-      this.player.update(dt, 0)
-    } else {
-      this.player.update(dt, WALK_DX)
+    for (let i = 0; i < this.players.length; i++) {
+      const p = this.players[i]
+      if (p.isDead) continue
+
+      const pc = p.x + p.width / 2
+      const nearbyEnemy = activeEnemies
+        .filter(e => e.x + e.width / 2 > pc)
+        .map(e => ({ e, d: Math.abs(e.x + e.width / 2 - pc) }))
+        .filter(({ d }) => d <= AUTO_RANGE)
+        .sort((a, b) => a.d - b.d)[0]?.e
+
+      if (nearbyEnemy) {
+        p.startAttack()
+        p.update(dt, 0)
+      } else if (i === 0) {
+        // front hero advances freely
+        p.update(dt, WALK_DX)
+      } else {
+        // follow hero ahead with a gap
+        const ahead = this.players[i - 1]
+        const gap = ahead.x - (p.x + p.width)
+        if (gap > 10) {
+          p.update(dt, WALK_DX)
+        } else {
+          p.update(dt, 0)
+        }
+      }
     }
-    this.clampPlayer()
+    this.clampPlayers()
   }
 
   private resolveCombat() {
-    if (!this.player.attackActive) return
-    const hc = this.player.x + this.player.width / 2
-    for (const wave of this.waves) {
-      for (const e of wave.enemies) {
-        if (e.isDead) continue
-        const ec = e.x + e.width / 2
-        const facing = this.player.facingRight ? ec > hc : ec < hc
-        if (facing && Math.abs(hc - ec) <= this.player.attackRange) {
-          e.takeDamage(this.player.attackDamage)
-          this.player.markHitDealt()
-          return
+    for (const p of this.players) {
+      if (p.isDead || !p.attackActive) continue
+      const hc = p.x + p.width / 2
+      for (const wave of this.waves) {
+        for (const e of wave.enemies) {
+          if (e.isDead) continue
+          const ec = e.x + e.width / 2
+          const facing = p.facingRight ? ec > hc : ec < hc
+          if (facing && Math.abs(hc - ec) <= p.attackRange) {
+            e.takeDamage(p.attackDamage)
+            p.markHitDealt()
+            break
+          }
         }
       }
     }
   }
 
   private tickEnemies(dt: number) {
-    let dmg = 0
+    const target = this.frontPlayer()
+    if (!target) return
+
     for (const wave of this.waves) {
       for (const e of wave.enemies) {
-        dmg += e.update(dt, this.player.x, this.player.width)
+        const dmg = e.update(dt, target.x, target.width)
+        if (dmg > 0) target.takeDamage(dmg)
       }
       if (wave.triggered && !wave.cleared && wave.enemies.every(e => e.isDead)) {
         wave.cleared = true
@@ -279,7 +404,6 @@ export class Game {
         }
       }
     }
-    if (dmg > 0) this.player.takeDamage(dmg)
   }
 
   private dropCoins() {
@@ -310,12 +434,22 @@ export class Game {
 
   // ── Helpers ─────────────────────────────────────────────────────
 
-  private clampPlayer() {
-    this.player.x = Math.max(0, Math.min(WORLD_WIDTH - this.player.width, this.player.x))
+  // Frontmost alive player = highest x (closest to enemies)
+  private frontPlayer(): Player | undefined {
+    return this.players
+      .filter(p => !p.isDead)
+      .sort((a, b) => b.x - a.x)[0]
+  }
+
+  private clampPlayers() {
+    for (const p of this.players) {
+      p.x = Math.max(0, Math.min(WORLD_WIDTH - p.width, p.x))
+    }
   }
 
   private calcCamera() {
-    return Math.max(0, Math.min(this.player.x - 200, WORLD_WIDTH - W))
+    const front = this.frontPlayer() ?? this.players[0]
+    return Math.max(0, Math.min((front?.x ?? 0) - 200, WORLD_WIDTH - W))
   }
 
   // ── Render ──────────────────────────────────────────────────────
@@ -327,20 +461,18 @@ export class Game {
     ctx.save()
     ctx.translate(-this.cameraX, 0)
 
-    // ground
     ctx.fillStyle = '#0f3460'
     ctx.fillRect(0, GROUND_Y, WORLD_WIDTH, H - GROUND_Y)
     ctx.fillStyle = '#533483'
     ctx.fillRect(0, GROUND_Y - 3, WORLD_WIDTH, 6)
 
-    this.player.draw(ctx)
+    for (const p of this.players) p.draw(ctx)
 
     for (const wave of this.waves) {
       if (!wave.triggered) continue
       for (const e of wave.enemies) e.draw(ctx)
     }
 
-    // floating texts (world space)
     for (const f of this.floats) {
       if (f.life <= 0) continue
       const fy = f.wy - (1 - f.life) * 55
@@ -371,7 +503,6 @@ export class Game {
     ctx.fillStyle = sky
     ctx.fillRect(0, 0, W, GROUND_Y)
 
-    // stars – parallax 0.1×
     const starShift = (this.cameraX * 0.1) % W
     ctx.save()
     ctx.translate(-starShift, 0)
@@ -381,7 +512,6 @@ export class Game {
     }
     ctx.restore()
 
-    // mountains – parallax 0.25×
     const mtnShift = (this.cameraX * 0.25) % (W * 2)
     ctx.save()
     ctx.translate(-mtnShift, 0)
@@ -400,7 +530,6 @@ export class Game {
     }
     ctx.restore()
 
-    // dead trees – parallax 0.55×
     const treeShift = (this.cameraX * 0.55) % (W * 1.6)
     ctx.save()
     ctx.translate(-treeShift, 0)
@@ -421,17 +550,18 @@ export class Game {
   private renderHUD() {
     const ctx = this.ctx
 
-    // thin top bar
-    ctx.fillStyle = 'rgba(0,0,0,0.55)'
-    ctx.fillRect(0, 0, W, 30)
+    // top bar background
+    const hudH = 36
+    ctx.fillStyle = 'rgba(0,0,0,0.60)'
+    ctx.fillRect(0, 0, W, hudH)
 
     // level label (center)
     ctx.fillStyle = '#555'
-    ctx.font = '11px monospace'
+    ctx.font = '10px monospace'
     ctx.textAlign = 'center'
-    ctx.fillText('MUNDO 0  ·  FASE 1', W / 2, 19)
+    ctx.fillText(this.levelName ?? 'MODO LIVRE', W / 2, 13)
 
-    // coin icon + count (right)
+    // coin counter (right)
     const numStr = String(this.totalCoins)
     ctx.font = 'bold 12px monospace'
     const numW = ctx.measureText(numStr).width
@@ -447,30 +577,60 @@ export class Game {
     ctx.textAlign = 'left'
     ctx.fillText(numStr, circleX + 10, 19)
 
-    // hero level badges (left side)
-    if (this.heroInfo.length > 0) {
-      let bx = 8
-      for (const h of this.heroInfo) {
-        const label = `Lv.${h.level}`
-        ctx.font = 'bold 10px monospace'
-        const lw = ctx.measureText(label).width
-        const bw = lw + 10
+    // per-hero badges (left side)
+    const BADGE_W = 78
+    const BADGE_H = 30
+    const BADGE_PAD = 4
 
-        // badge bg
-        ctx.fillStyle = 'rgba(255,255,255,0.08)'
-        ctx.fillRect(bx, 5, bw, 20)
+    for (let i = 0; i < this.players.length; i++) {
+      const p = this.players[i]
+      const d = this.heroDisplay[i]
+      if (!d) continue
 
-        // xp progress fill
-        const pct = h.xpToNext > 0 ? h.xp / h.xpToNext : 0
-        ctx.fillStyle = 'rgba(46,204,113,0.35)'
-        ctx.fillRect(bx, 5, bw * pct, 20)
+      const bx = BADGE_PAD + i * (BADGE_W + BADGE_PAD)
+      const by = 3
+      const dead = p.isDead
 
-        // label
-        ctx.fillStyle = '#a8e6cf'
+      // badge background
+      ctx.fillStyle = dead ? 'rgba(0,0,0,0.4)' : 'rgba(255,255,255,0.07)'
+      ctx.fillRect(bx, by, BADGE_W, BADGE_H)
+
+      if (!dead) {
+        // HP fill
+        const hpPct = Math.max(0, p.hp / p.maxHp)
+        const hpColor = hpPct > 0.5 ? '#2ecc71' : hpPct > 0.25 ? '#e67e22' : '#e74c3c'
+        ctx.fillStyle = hpColor + '55'
+        ctx.fillRect(bx, by, BADGE_W * hpPct, BADGE_H)
+
+        // XP fill (very subtle, bottom strip)
+        const xpPct = d.xpToNext > 0 ? Math.min(1, d.xp / d.xpToNext) : 0
+        ctx.fillStyle = 'rgba(46,204,113,0.25)'
+        ctx.fillRect(bx, by + BADGE_H - 4, BADGE_W * xpPct, 4)
+      }
+
+      // hero name (truncated) + level
+      const nameShort = d.name.length > 6 ? d.name.slice(0, 6) : d.name
+      ctx.font = 'bold 9px monospace'
+      ctx.fillStyle = dead ? '#444' : '#ccc'
+      ctx.textAlign = 'left'
+      ctx.fillText(nameShort, bx + 4, by + 11)
+
+      ctx.font = 'bold 9px monospace'
+      ctx.fillStyle = dead ? '#333' : '#a8e6cf'
+      ctx.textAlign = 'right'
+      ctx.fillText(`Lv.${d.level}`, bx + BADGE_W - 3, by + 11)
+
+      if (!dead) {
+        // HP text
+        ctx.font = '8px monospace'
+        ctx.fillStyle = 'rgba(255,255,255,0.55)'
         ctx.textAlign = 'left'
-        ctx.fillText(label, bx + 5, 18)
-
-        bx += bw + 4
+        ctx.fillText(`${p.hp}/${p.maxHp}`, bx + 4, by + 23)
+      } else {
+        ctx.font = '8px monospace'
+        ctx.fillStyle = '#555'
+        ctx.textAlign = 'center'
+        ctx.fillText('MORTO', bx + BADGE_W / 2, by + 23)
       }
     }
 
@@ -488,7 +648,7 @@ export class Game {
     ctx.fillStyle = '#e8c050'
     ctx.font = 'bold 34px monospace'
     ctx.textAlign = 'center'
-    ctx.fillText('MUNDO 0  —  FASE 1', W / 2, H / 2 - 4)
+    ctx.fillText(this.levelName ?? 'MODO LIVRE', W / 2, H / 2 - 4)
     ctx.fillStyle = '#666'
     ctx.font = '15px monospace'
     ctx.fillText('Prepare-se para a batalha...', W / 2, H / 2 + 30)
@@ -513,7 +673,6 @@ export class Game {
     ctx.globalAlpha = 1
   }
 
-  // shared stat box — semi-transparent so hero is visible behind it
   private renderStatsBox(title: string, titleColor: string) {
     const ctx = this.ctx
     ctx.fillStyle = 'rgba(0,0,0,0.75)'
@@ -536,7 +695,6 @@ export class Game {
       ctx.fillText(val, W / 2 + 130, H / 2 - 15 + i * 36)
     })
 
-    // coins row with icon
     ctx.fillStyle = '#aaa'
     ctx.fillText('Moedas coletadas:', W / 2 - 30, H / 2 + 57)
     ctx.beginPath()
@@ -554,7 +712,7 @@ export class Game {
   }
 
   private renderDead() {
-    this.renderStatsBox('SEU HERÓI CAIU', '#e74c3c')
+    this.renderStatsBox('GRUPO DERROTADO', '#e74c3c')
     const timeLeft = Math.max(0, Math.ceil((5000 - this.deadElapsed) / 1000))
     const ctx = this.ctx
     ctx.fillStyle = '#555'

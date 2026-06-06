@@ -33,3 +33,15 @@ export function clearSession() {
   localStorage.removeItem(EMAIL_KEY)
   localStorage.removeItem(COINS_KEY)
 }
+
+const SELECTED_LEVEL_KEY = 'hero-rpg-selected-level'
+
+export function getSelectedLevel(): string | null {
+  if (typeof localStorage === 'undefined') return null
+  return localStorage.getItem(SELECTED_LEVEL_KEY)
+}
+
+export function setSelectedLevel(id: string) {
+  if (typeof localStorage === 'undefined') return
+  localStorage.setItem(SELECTED_LEVEL_KEY, id)
+}

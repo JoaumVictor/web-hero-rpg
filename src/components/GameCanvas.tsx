@@ -1,8 +1,8 @@
 'use client'
 
 import { useEffect, useRef } from 'react'
-import { Game } from '@/game/Game'
-import { getPlayerId, getLocalCoins, setLocalCoins } from '@/lib/session'
+import { Game, WaveDefDB, HeroSlot } from '@/game/Game'
+import { getPlayerId, getLocalCoins, setLocalCoins, getSelectedLevel } from '@/lib/session'
 import { computeStats } from '@/lib/heroStats'
 
 async function loadCoins(playerId: string): Promise<number> {
@@ -36,6 +36,7 @@ const RARITY_COLORS: Record<string, string> = {
 
 type HeroApiItem = {
   name: string
+  spriteSet: string
   hp: number; attack: number; defense: number; attackCooldown: number; walkSpeed: number; attackRange: number
   instance: {
     id: string; level: number; xp: number; groupPosition: number | null
@@ -43,43 +44,54 @@ type HeroApiItem = {
   } | null
 }
 
-type GroupHeroInfo = {
-  name: string; level: number; xp: number; xpToNext: number
+type LevelInfo = { name: string; zone: { name: string; world: { name: string } } }
+
+async function loadSelectedLevel(levelId: string): Promise<{ waveDefs: WaveDefDB[] | null; levelInfo: LevelInfo | null }> {
+  try {
+    const [wavesRes, levelRes] = await Promise.all([
+      fetch(`/api/levels/${levelId}/waves`),
+      fetch(`/api/levels/${levelId}`),
+    ])
+    const waveDefs: WaveDefDB[] | null = wavesRes.ok ? await wavesRes.json() : null
+    const levelInfo: LevelInfo | null = levelRes.ok ? await levelRes.json() : null
+    return { waveDefs, levelInfo }
+  } catch {
+    return { waveDefs: null, levelInfo: null }
+  }
 }
 
-type LeadHeroStats = {
-  hp: number; attack: number; walkSpeed: number; attackCooldown: number
-} | null
-
-async function loadGroupData(playerId: string): Promise<{ heroInfo: GroupHeroInfo[]; leadStats: LeadHeroStats }> {
+async function loadGroupData(playerId: string): Promise<HeroSlot[]> {
   try {
     const res = await fetch(`/api/heroes?player=${playerId}`)
     const heroes: HeroApiItem[] = await res.json()
-    const inGroup = heroes.filter(h => h.instance?.groupPosition != null)
 
-    const heroInfo = inGroup.map(h => ({
-      name: h.name,
-      level: h.instance!.level,
-      xp: h.instance!.xp,
-      xpToNext: Math.round(100 * Math.pow(h.instance!.level, 1.5)),
-    }))
+    const inGroup = heroes
+      .filter(h => h.instance?.groupPosition != null)
+      .sort((a, b) => (a.instance!.groupPosition ?? 0) - (b.instance!.groupPosition ?? 0))
 
-    // use position 0 (front hero) stats for the game engine
-    const front = inGroup.find(h => h.instance!.groupPosition === 0) ?? inGroup[0]
-    let leadStats: LeadHeroStats = null
-    if (front) {
-      const equippedItems = front.instance!.equipment.map(e => ({ statBonus: e.inventoryItem.item.statBonus }))
+    return inGroup.map(h => {
+      const equippedItems = h.instance!.equipment.map(e => ({
+        statBonus: e.inventoryItem.item.statBonus,
+      }))
       const stats = computeStats(
-        { hp: front.hp, attack: front.attack, defense: front.defense, attackCooldown: front.attackCooldown, walkSpeed: front.walkSpeed, attackRange: front.attackRange },
-        front.instance!.level,
+        { hp: h.hp, attack: h.attack, defense: h.defense, attackCooldown: h.attackCooldown, walkSpeed: h.walkSpeed, attackRange: h.attackRange },
+        h.instance!.level,
         equippedItems,
       )
-      leadStats = { hp: stats.hp, attack: stats.attack, walkSpeed: stats.walkSpeed, attackCooldown: stats.attackCooldown }
-    }
-
-    return { heroInfo, leadStats }
+      return {
+        name: h.name,
+        hp: stats.hp,
+        attack: stats.attack,
+        speed: stats.walkSpeed,
+        cooldownMs: stats.attackCooldown * 1000,
+        spriteSet: h.spriteSet ?? 'hero',
+        level: h.instance!.level,
+        xp: h.instance!.xp,
+        xpToNext: Math.round(100 * Math.pow(h.instance!.level, 1.5)),
+      }
+    })
   } catch {
-    return { heroInfo: [], leadStats: null }
+    return []
   }
 }
 
@@ -100,19 +112,44 @@ export default function GameCanvas({ onRestart }: Props) {
     const playerId = getPlayerId()
 
     const init = async () => {
-      const [initialCoins, groupData] = await Promise.all([
+      const selectedLevelId = getSelectedLevel()
+
+      const [initialCoins, heroSlots, levelData] = await Promise.all([
         playerId ? loadCoins(playerId) : Promise.resolve(getLocalCoins()),
-        playerId ? loadGroupData(playerId) : Promise.resolve({ heroInfo: [], leadStats: null }),
+        playerId ? loadGroupData(playerId) : Promise.resolve([] as HeroSlot[]),
+        selectedLevelId ? loadSelectedLevel(selectedLevelId) : Promise.resolve({ waveDefs: null, levelInfo: null }),
       ])
       if (destroyed) return
 
-      game = new Game(canvas, initialCoins, groupData.leadStats ?? undefined)
-      game.setHeroInfo(groupData.heroInfo)
+      game = new Game(canvas, initialCoins, levelData.waveDefs, heroSlots.length > 0 ? heroSlots : undefined)
+
+      if (levelData.levelInfo) {
+        const { name, zone } = levelData.levelInfo
+        game.setLevelName(`${zone.world.name}  ·  ${zone.name}  ·  ${name}`)
+      }
 
       game.onRestart = onRestart
       game.onCoinsChange = (total) => {
         if (playerId) persistCoins(playerId, total)
         else setLocalCoins(total)
+      }
+
+      if (playerId && selectedLevelId) {
+        game.onLevelComplete = ({ monstersKilled, heroSurvived, timeMs }) => {
+          let stars = 1
+          if (heroSurvived) stars = 2
+          if (heroSurvived && timeMs < 90_000) stars = 3
+
+          fetch(`/api/levels/${selectedLevelId}/complete`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ playerId, stars }),
+          }).catch(() => {})
+
+          if (game) {
+            game.addFloat(400, 180, `${'★'.repeat(stars)}${'☆'.repeat(3 - stars)} FASE COMPLETA!`, '#f1c40f', 18)
+          }
+        }
       }
 
       if (playerId) {
@@ -131,24 +168,20 @@ export default function GameCanvas({ onRestart }: Props) {
             }) => {
               if (!game || game['destroyed']) return
 
-              // +XP float
               if (data.xpGained > 0) {
                 game.addFloat(x, y, `+${data.xpGained} XP`, '#a8e6cf', 13)
               }
 
-              // level up floats
               for (const lu of data.levelUps) {
                 game.addFloat(x, y - 30, `${lu.heroName} LV.${lu.newLevel}!`, '#ffe066', 14)
               }
 
-              // item drop floats
               for (let i = 0; i < data.drops.length; i++) {
                 const drop = data.drops[i]
                 const color = RARITY_COLORS[drop.rarity] ?? '#aaa'
                 game.addFloat(x, y - 50 - i * 18, `⬟ ${drop.itemName}`, color, 12)
               }
 
-              // update HUD badges
               if (data.heroes.length > 0) {
                 game.setHeroInfo(data.heroes)
               }

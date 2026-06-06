@@ -1,6 +1,6 @@
 import { loadSpriteSet, SpriteSet } from '@/lib/spriteLoader'
 
-const SPEED = 42
+const DEFAULT_WALK_SPEED = 42
 const MELEE_RANGE = 90
 const ATTACK_COOLDOWN = 2200
 const ATTACK_DAMAGE = 1
@@ -24,8 +24,9 @@ export class Enemy {
   readonly spriteSet: string
   readonly baseXp: number
   readonly monsterId: string | undefined
+  private readonly walkSpeed: number
 
-  constructor(x: number, y: number, hp = 80, spriteSet = 'zombie', baseXp = 8, monsterId?: string) {
+  constructor(x: number, y: number, hp = 80, spriteSet = 'zombie', baseXp = 8, monsterId?: string, walkSpeed = DEFAULT_WALK_SPEED) {
     this.x = x
     this.y = y
     this.hp = hp
@@ -33,6 +34,7 @@ export class Enemy {
     this.spriteSet = spriteSet
     this.baseXp = baseXp
     this.monsterId = monsterId
+    this.walkSpeed = walkSpeed
   }
 
   async load() {
@@ -53,7 +55,7 @@ export class Enemy {
 
     if (dist > MELEE_RANGE) {
       const dir = pc < mc ? -1 : 1
-      this.x += dir * SPEED * dt
+      this.x += dir * this.walkSpeed * dt
       this.facingRight = dir > 0
 
       // walk animation

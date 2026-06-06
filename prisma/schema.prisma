@@ -13,6 +13,7 @@ model Player {
   coins          Int             @default(0)
   heroInstances  HeroInstance[]
   inventory      InventoryItem[]
+  levelProgress  PlayerLevelProgress[]
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
 }
@@ -109,6 +110,7 @@ model Round {
   chestRareChance      Float    @default(0.1)
   chestLegendaryChance Float    @default(0.02)
   waves                Wave[]
+  levels               Level[]
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
 }
@@ -172,6 +174,49 @@ model InventoryItem {
   equipment  Equipment[]
 
   @@index([playerId])
+}
+
+// ── Map hierarchy ─────────────────────────────────────────────────
+model World {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  order       Int      @default(0)
+  zones       Zone[]
+}
+
+model Zone {
+  id          String   @id @default(cuid())
+  worldId     String
+  world       World    @relation(fields: [worldId], references: [id], onDelete: Cascade)
+  name        String
+  description String?
+  order       Int      @default(0)
+  levels      Level[]
+}
+
+model Level {
+  id               String                @id @default(cuid())
+  zoneId           String
+  zone             Zone                  @relation(fields: [zoneId], references: [id], onDelete: Cascade)
+  name             String
+  number           Int
+  roundId          String
+  round            Round                 @relation(fields: [roundId], references: [id])
+  recommendedLevel Int                   @default(1)
+  progress         PlayerLevelProgress[]
+}
+
+model PlayerLevelProgress {
+  id          String    @id @default(cuid())
+  playerId    String
+  player      Player    @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  levelId     String
+  level       Level     @relation(fields: [levelId], references: [id], onDelete: Cascade)
+  stars       Int       @default(0)
+  completedAt DateTime?
+
+  @@unique([playerId, levelId])
 }
 
 enum ItemType {
