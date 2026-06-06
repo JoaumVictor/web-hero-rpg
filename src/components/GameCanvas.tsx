@@ -46,6 +46,14 @@ type HeroApiItem = {
 
 type LevelInfo = { name: string; zone: { name: string; world: { name: string } } }
 
+type SkillBonus = {
+  allAttack?: number
+  allHp?: number
+  allDefense?: number
+  coinBonus?: number
+  xpBonus?: number
+}
+
 async function loadSelectedLevel(levelId: string): Promise<{ waveDefs: WaveDefDB[] | null; levelInfo: LevelInfo | null }> {
   try {
     const [wavesRes, levelRes] = await Promise.all([
@@ -60,16 +68,20 @@ async function loadSelectedLevel(levelId: string): Promise<{ waveDefs: WaveDefDB
   }
 }
 
-async function loadGroupData(playerId: string): Promise<HeroSlot[]> {
+async function loadGroupData(playerId: string): Promise<{ slots: HeroSlot[]; bonus: SkillBonus }> {
   try {
-    const res = await fetch(`/api/heroes?player=${playerId}`)
-    const heroes: HeroApiItem[] = await res.json()
+    const [heroRes, bonusRes] = await Promise.all([
+      fetch(`/api/heroes?player=${playerId}`),
+      fetch(`/api/skills/bonus?player=${playerId}`),
+    ])
+    const heroes: HeroApiItem[] = await heroRes.json()
+    const bonus: SkillBonus = bonusRes.ok ? await bonusRes.json() : {}
 
     const inGroup = heroes
       .filter(h => h.instance?.groupPosition != null)
       .sort((a, b) => (a.instance!.groupPosition ?? 0) - (b.instance!.groupPosition ?? 0))
 
-    return inGroup.map(h => {
+    const slots = inGroup.map(h => {
       const equippedItems = h.instance!.equipment.map(e => ({
         statBonus: e.inventoryItem.item.statBonus,
       }))
@@ -80,18 +92,21 @@ async function loadGroupData(playerId: string): Promise<HeroSlot[]> {
       )
       return {
         name: h.name,
-        hp: stats.hp,
-        attack: stats.attack,
+        hp: stats.hp + (bonus.allHp ?? 0),
+        attack: stats.attack + (bonus.allAttack ?? 0),
         speed: stats.walkSpeed,
         cooldownMs: stats.attackCooldown * 1000,
+        attackRange: h.attackRange,   // in grids — not scaled by level or equipment
         spriteSet: h.spriteSet ?? 'hero',
         level: h.instance!.level,
         xp: h.instance!.xp,
         xpToNext: Math.round(100 * Math.pow(h.instance!.level, 1.5)),
       }
     })
+
+    return { slots, bonus }
   } catch {
-    return []
+    return { slots: [], bonus: {} }
   }
 }
 
@@ -114,14 +129,21 @@ export default function GameCanvas({ onRestart }: Props) {
     const init = async () => {
       const selectedLevelId = getSelectedLevel()
 
-      const [initialCoins, heroSlots, levelData] = await Promise.all([
+      const [initialCoins, groupData, levelData] = await Promise.all([
         playerId ? loadCoins(playerId) : Promise.resolve(getLocalCoins()),
-        playerId ? loadGroupData(playerId) : Promise.resolve([] as HeroSlot[]),
+        playerId ? loadGroupData(playerId) : Promise.resolve({ slots: [] as HeroSlot[], bonus: {} as SkillBonus }),
         selectedLevelId ? loadSelectedLevel(selectedLevelId) : Promise.resolve({ waveDefs: null, levelInfo: null }),
       ])
       if (destroyed) return
 
-      game = new Game(canvas, initialCoins, levelData.waveDefs, heroSlots.length > 0 ? heroSlots : undefined)
+      const { slots: heroSlots, bonus: skillBonus } = groupData
+      game = new Game(
+        canvas,
+        initialCoins,
+        levelData.waveDefs,
+        heroSlots.length > 0 ? heroSlots : undefined,
+        skillBonus.coinBonus ?? 0,
+      )
 
       if (levelData.levelInfo) {
         const { name, zone } = levelData.levelInfo
@@ -157,7 +179,7 @@ export default function GameCanvas({ onRestart }: Props) {
           fetch('/api/combat/kill', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ playerId, baseXp, monsterId }),
+            body: JSON.stringify({ playerId, baseXp, monsterId, xpBonus: skillBonus.xpBonus ?? 0 }),
           })
             .then(r => r.json())
             .then((data: {

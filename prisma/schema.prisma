@@ -14,6 +14,7 @@ model Player {
   heroInstances  HeroInstance[]
   inventory      InventoryItem[]
   levelProgress  PlayerLevelProgress[]
+  skillUnlocks   PlayerSkillUnlock[]
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
 }
@@ -217,6 +218,28 @@ model PlayerLevelProgress {
   completedAt DateTime?
 
   @@unique([playerId, levelId])
+}
+
+// ── Global skill tree ─────────────────────────────────────────────
+model SkillNode {
+  id          String               @id @default(cuid())
+  name        String
+  description String
+  costCoins   Int
+  statBonus   Json
+  order       Int                  @default(0)
+  unlocks     PlayerSkillUnlock[]
+}
+
+model PlayerSkillUnlock {
+  id          String    @id @default(cuid())
+  playerId    String
+  player      Player    @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  nodeId      String
+  node        SkillNode @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+  unlockedAt  DateTime  @default(now())
+
+  @@unique([playerId, nodeId])
 }
 
 enum ItemType {

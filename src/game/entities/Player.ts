@@ -26,10 +26,11 @@ export class Player {
 
   readonly spriteSet: string
   readonly attackDamage: number
+  readonly attackRange: number   // in px (grids × 100)
   private readonly speed: number
   private readonly attackCooldownMs: number
 
-  constructor(x: number, y: number, hp = 100, spriteSet = 'hero', attackDamage = 4, speed = DEFAULT_SPEED, attackCooldownMs = DEFAULT_ATTACK_COOLDOWN) {
+  constructor(x: number, y: number, hp = 100, spriteSet = 'hero', attackDamage = 4, speed = DEFAULT_SPEED, attackCooldownMs = DEFAULT_ATTACK_COOLDOWN, attackRangePx = 100) {
     this.x = x
     this.y = y
     this.hp = hp
@@ -38,6 +39,7 @@ export class Player {
     this.attackDamage = attackDamage
     this.speed = speed
     this.attackCooldownMs = attackCooldownMs
+    this.attackRange = attackRangePx
   }
 
   async load() {
@@ -46,7 +48,6 @@ export class Player {
 
   get isDead() { return this.hp <= 0 }
   get attackActive() { return this._attackActive }
-  get attackRange() { return 110 }
 
   startAttack() {
     if (this.cooldown > 0 || this.state === 'attack') return

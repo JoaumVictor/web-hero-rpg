@@ -1,8 +1,9 @@
 import { loadSpriteSet, SpriteSet } from '@/lib/spriteLoader'
 
 const DEFAULT_WALK_SPEED = 42
-const MELEE_RANGE = 90
-const ATTACK_COOLDOWN = 2200
+const DEFAULT_ATTACK_COOLDOWN_MS = 2200
+const DEFAULT_ATTACK_RANGE = 1      // in grids
+const GRID_SIZE = 100
 const ATTACK_DAMAGE = 1
 const DRAW_SIZE = 100
 
@@ -25,8 +26,20 @@ export class Enemy {
   readonly baseXp: number
   readonly monsterId: string | undefined
   private readonly walkSpeed: number
+  private readonly attackCooldownMs: number
+  private readonly attackRangePx: number
 
-  constructor(x: number, y: number, hp = 80, spriteSet = 'zombie', baseXp = 8, monsterId?: string, walkSpeed = DEFAULT_WALK_SPEED) {
+  constructor(
+    x: number,
+    y: number,
+    hp = 80,
+    spriteSet = 'zombie',
+    baseXp = 8,
+    monsterId: string | undefined = undefined,
+    walkSpeed = DEFAULT_WALK_SPEED,
+    attackCooldownMs = DEFAULT_ATTACK_COOLDOWN_MS,
+    attackRange = DEFAULT_ATTACK_RANGE,
+  ) {
     this.x = x
     this.y = y
     this.hp = hp
@@ -35,6 +48,8 @@ export class Enemy {
     this.baseXp = baseXp
     this.monsterId = monsterId
     this.walkSpeed = walkSpeed
+    this.attackCooldownMs = attackCooldownMs
+    this.attackRangePx = attackRange * GRID_SIZE
   }
 
   async load() {
@@ -53,12 +68,11 @@ export class Enemy {
     const mc = this.x + this.width / 2
     const dist = Math.abs(mc - pc)
 
-    if (dist > MELEE_RANGE) {
+    if (dist > this.attackRangePx) {
       const dir = pc < mc ? -1 : 1
       this.x += dir * this.walkSpeed * dt
       this.facingRight = dir > 0
 
-      // walk animation
       this.frameTimer += ms
       if (this.frameTimer >= 120) {
         this.frameTimer = 0
@@ -70,8 +84,8 @@ export class Enemy {
     }
 
     this.cooldown = Math.max(0, this.cooldown - ms)
-    if (dist <= MELEE_RANGE && this.cooldown === 0) {
-      this.cooldown = ATTACK_COOLDOWN
+    if (dist <= this.attackRangePx && this.cooldown === 0) {
+      this.cooldown = this.attackCooldownMs
       return ATTACK_DAMAGE
     }
     return 0

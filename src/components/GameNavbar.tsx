@@ -36,6 +36,13 @@ export default function GameNavbar({
         <MapIcon />
         MAPA
       </Link>
+      <Link
+        href="/skills"
+        className="flex items-center gap-1.5 px-3 py-1.5 rounded border text-xs font-mono tracking-wide transition-all border-gray-700 text-gray-500 hover:border-gray-500 hover:text-gray-300"
+      >
+        <SkillIcon />
+        SKILLS
+      </Link>
     </div>
   )
 }
@@ -90,6 +97,14 @@ function BackpackIcon() {
       <rect x="1" y="5" width="12" height="10" rx="2" />
       <path d="M4 5 Q7 2 10 5" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" />
       <rect x="5" y="9" width="4" height="2.5" rx="1" fill="#111827" />
+    </svg>
+  )
+}
+
+function SkillIcon() {
+  return (
+    <svg width="12" height="14" viewBox="0 0 14 16" fill="currentColor">
+      <polygon points="7,0 9,5 14,5 10,9 12,14 7,11 2,14 4,9 0,5 5,5" />
     </svg>
   )
 }

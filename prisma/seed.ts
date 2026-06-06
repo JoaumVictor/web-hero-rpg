@@ -267,6 +267,26 @@ async function main() {
     await db.level.upsert({ where: { id: lvl.id }, update: {}, create: lvl })
   }
 
+  // ── Skill nodes (global passive upgrades) ───────────────────────
+  const skillNodes = [
+    { id: 'skill-hp-1',   name: 'Vitalidade I',   description: '+5 HP para todos os heróis.',            costCoins: 50,  statBonus: { allHp: 5 },        order: 1 },
+    { id: 'skill-hp-2',   name: 'Vitalidade II',  description: '+12 HP para todos os heróis.',           costCoins: 150, statBonus: { allHp: 12 },       order: 2 },
+    { id: 'skill-atk-1',  name: 'Força I',        description: '+1 ATK para todos os heróis.',           costCoins: 75,  statBonus: { allAttack: 1 },    order: 3 },
+    { id: 'skill-atk-2',  name: 'Força II',       description: '+3 ATK para todos os heróis.',           costCoins: 200, statBonus: { allAttack: 3 },    order: 4 },
+    { id: 'skill-def-1',  name: 'Resiliência I',  description: '+2 DEF para todos os heróis.',           costCoins: 80,  statBonus: { allDefense: 2 },   order: 5 },
+    { id: 'skill-coin-1', name: 'Cobiça',         description: '+50% moedas de cada kill.',              costCoins: 120, statBonus: { coinBonus: 0.5 },  order: 6 },
+    { id: 'skill-xp-1',   name: 'Sabedoria',      description: '+25% XP de cada kill.',                  costCoins: 100, statBonus: { xpBonus: 0.25 },   order: 7 },
+    { id: 'skill-xp-2',   name: 'Iluminação',     description: '+50% XP de cada kill.',                  costCoins: 250, statBonus: { xpBonus: 0.5 },    order: 8 },
+  ]
+
+  for (const node of skillNodes) {
+    await db.skillNode.upsert({
+      where: { id: node.id },
+      update: {},
+      create: node,
+    })
+  }
+
   console.log('Seed concluído')
 }
 

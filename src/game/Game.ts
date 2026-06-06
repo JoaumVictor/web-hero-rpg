@@ -10,8 +10,8 @@ const WORLD_WIDTH = 4000
 // ── Balance ───────────────────────────────────────────────────────
 const WALK_DX = 0.65      // 0.65 × 220 ≈ 143 px/s
 const INTRO_DX = 0.30
-const AUTO_RANGE = 115    // center-to-center distance to auto-attack
 const HERO_GAP = 80       // px between heroes in formation
+const GRID_SIZE = 100     // 1 grid = 100px (attackRange unit)
 const ENEMY_HP = 12
 
 const DEFAULT_HP = 26
@@ -62,6 +62,7 @@ export interface HeroSlot {
   attack: number
   speed: number
   cooldownMs: number
+  attackRange: number   // in grids (1 grid = 100px)
   spriteSet: string
   level: number
   xp: number
@@ -163,6 +164,7 @@ export class Game {
     initialCoins = 0,
     waveDefs?: WaveDefDB[] | null,
     heroSlots?: HeroSlot[],
+    private coinBonus = 0,
   ) {
     this.canvas = canvas
     canvas.width = W
@@ -178,6 +180,7 @@ export class Game {
       attack: DEFAULT_ATTACK,
       speed: DEFAULT_SPEED,
       cooldownMs: DEFAULT_COOLDOWN_MS,
+      attackRange: 1,
       spriteSet: 'hero',
       level: 1,
       xp: 0,
@@ -193,6 +196,7 @@ export class Game {
       s.attack,
       s.speed,
       s.cooldownMs,
+      s.attackRange * GRID_SIZE,
     ))
 
     this.heroDisplay = slots.map(s => ({
@@ -214,6 +218,8 @@ export class Game {
           m.monster.baseXp,
           m.monster.id,
           m.monster.walkSpeed,
+          Math.round(m.monster.attackCooldown * 1000),
+          m.monster.attackRange,
         )),
         triggered: false,
         cleared: false,
@@ -340,7 +346,7 @@ export class Game {
       const nearbyEnemy = activeEnemies
         .filter(e => e.x + e.width / 2 > pc)
         .map(e => ({ e, d: Math.abs(e.x + e.width / 2 - pc) }))
-        .filter(({ d }) => d <= AUTO_RANGE)
+        .filter(({ d }) => d <= p.attackRange)
         .sort((a, b) => a.d - b.d)[0]?.e
 
       if (nearbyEnemy) {
@@ -412,7 +418,8 @@ export class Game {
         if (!e.isDead || this.droppedCoins.has(e)) continue
         this.droppedCoins.add(e)
         this.monstersKilled++
-        const coins = (Math.floor(e.x) % 3 === 0) ? 2 : 1
+        const base = (Math.floor(e.x) % 3 === 0) ? 2 : 1
+        const coins = Math.round(base * (1 + this.coinBonus))
         this.totalCoins += coins
         this.onCoinsChange?.(this.totalCoins)
         this.floats.push({ wx: e.x + e.width / 2, wy: e.y, text: `+${coins}`, color: '#f1c40f', life: 1 })

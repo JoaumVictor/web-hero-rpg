@@ -6,7 +6,7 @@ function xpToNext(level: number): number {
 }
 
 export async function POST(req: NextRequest) {
-  const { playerId, monsterId, baseXp: baseXpParam, levelMult = 1 } = await req.json()
+  const { playerId, monsterId, baseXp: baseXpParam, levelMult = 1, xpBonus = 0 } = await req.json()
   if (!playerId) return NextResponse.json({ error: 'playerId obrigatório' }, { status: 400 })
 
   // resolve monster data — baseXp and loot entries
@@ -32,7 +32,7 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const xpGained = Math.round(baseXp * levelMult)
+  const xpGained = Math.round(baseXp * levelMult * (1 + xpBonus))
 
   // ── XP distribution ───────────────────────────────────────────
   const group = await db.heroInstance.findMany({
