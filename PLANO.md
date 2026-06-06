@@ -49,51 +49,78 @@ O admin faz upload via `multipart/form-data` → Next.js API salva em `/public/a
 
 ## 3. SISTEMA DE SPRITES E ANIMAÇÕES
 
-### 3.1 Estados de animação (por entidade)
-
-| Estado       | Herói | Monstro | Boss | Pet |
-|--------------|:-----:|:-------:|:----:|:---:|
-| `idle`       | ✓     | ✓       | ✓    | ✓   |
-| `walk`       | ✓     | ✓       | ✓    | ✓   |
-| `run`        | ✓     | -       | -    | -   |
-| `attack`     | ✓     | ✓       | ✓    | -   |
-| `hurt`       | ✓     | ✓       | ✓    | -   |
-| `death`      | ✓     | ✓       | ✓    | -   |
-| `fly`        | -     | ✓       | ✓    | ✓   |
-| `special`    | ✓     | -       | ✓    | -   |
-| `buff`       | -     | -       | ✓    | ✓   |
-
-### 3.2 Schema de sprites no admin
+### 3.1 Convenção de pastas (convention over configuration)
 
 ```
-EntitySprite
-  - entityType: "hero" | "monster" | "pet"
-  - entityId: FK
-  - animState: "idle" | "walk" | "attack" | "death" | ...
-  - frames: SpriteFrame[]
-
-SpriteFrame
-  - spriteId: FK
-  - order: Int
-  - imagePath: String   ← caminho em /public/assets/
-  - duration: Int       ← ms por frame (padrão 120ms)
+/public/assets/heroes/{nome-exato}/
+/public/assets/creatures/{nome-exato}/
 ```
 
-### 3.3 Admin de sprites (UX pensada)
+**Por que `/public/` e não `/src/`?**
+O Canvas carrega imagens via URL HTTP. Arquivos em `/src/` são processados pelo bundler e não ficam acessíveis como URLs estáticas. `/public/` é servido diretamente.
+
+### 3.2 Convenção de nomes de arquivo
 
 ```
-┌─────────────────────────────────────────────────────┐
-│  MONSTRO: Zumbi Guerreiro                           │
-├──────────────┬──────────────────────────────────────┤
-│  ANIMAÇÕES   │  walk  [+frame] [preview ▶]          │
-│              │  ┌──┐ ┌──┐ ┌──┐ ┌──┐                │
-│  idle    ●   │  │f1│ │f2│ │f3│ │  │ ← drag aqui    │
-│  walk    ●   │  └──┘ └──┘ └──┘ └──┘                │
-│  attack  ●   │  Velocidade: [120ms/frame]           │
-│  death   ○   │                                      │
-│  hurt    ○   │  attack [+frame] [preview ▶]         │
-└──────────────┴──────────────────────────────────────┘
+OBRIGATÓRIOS (sem eles o sprite set é rejeitado):
+  idle-1.png       parado / respirando
+  walk-1.png       caminhando
+  attack-1.png     atacando
+  death-1.png      morrendo
+
+OPCIONAIS (sem eles, o código usa fallback = idle):
+  hurt-1.png       tomando dano
+  special-1.png    habilidade especial
+  stunned-1.png    atordoado/paralisado
+  run-1.png        correndo (mais rápido que walk)
+  fly-1.png        voando (inimigos aéreos)
 ```
+
+Frames são auto-detectados: o loader tenta `walk-1`, `walk-2`, `walk-3`... e para quando o arquivo não existe.
+
+### 3.3 Descoberta automática de sprite sets
+
+```ts
+// GET /api/admin/sprite-sets?type=heroes
+// Escaneia /public/assets/heroes/ no servidor
+// Valida que os 4 obrigatórios existem
+// Retorna lista de sprite sets válidos
+
+const REQUIRED_FRAMES = ['idle-1.png', 'walk-1.png', 'attack-1.png', 'death-1.png']
+
+function validateSpriteSet(folderPath: string): boolean {
+  return REQUIRED_FRAMES.every(f => fs.existsSync(path.join(folderPath, f)))
+}
+```
+
+### 3.4 Um sprite set → infinitas definições
+
+```
+/public/assets/creatures/skeleton/
+  idle-1.png, walk-1.png, attack-1.png, death-1.png ✓
+
+Admin cria com base nesse sprite set:
+  "Esqueleto Guerreiro"  → spriteSet="skeleton", attack=8,  melee,   normal
+  "Esqueleto Arqueiro"   → spriteSet="skeleton", attack=5,  ranged,  normal
+  "Rei Esqueleto"        → spriteSet="skeleton", attack=20, isBoss,  sizeMultiplier=2.5
+  "Esqueleto Venenoso"   → spriteSet="skeleton", attackBehavior="DEBUFF_POISON"
+```
+
+Mesmo asset no disco, 4 inimigos diferentes no jogo.
+
+### 3.5 States de animação disponíveis
+
+| Estado      | Obrigatório | Fallback     | Quem usa            |
+|-------------|:-----------:|--------------|---------------------|
+| `idle`      | ✓           | —            | todos               |
+| `walk`      | ✓           | —            | todos               |
+| `attack`    | ✓           | —            | todos               |
+| `death`     | ✓           | —            | todos               |
+| `hurt`      | —           | idle         | heróis, monstros    |
+| `special`   | —           | attack       | heróis, bosses      |
+| `stunned`   | —           | idle         | heróis, monstros    |
+| `run`       | —           | walk         | heróis              |
+| `fly`       | —           | walk         | inimigos aéreos     |
 
 ---
 
@@ -458,14 +485,24 @@ Exemplos de pets:
 
 Hoje usamos `sessionId` no localStorage. Precisamos evoluir.
 
-### 12.1 Fluxo sugerido (sem complicar)
+### 12.1 Fluxo — email como identificador único
 
 ```
-Dev agora:    sessionId anônimo (já existe, funciona)
-Próximo passo: auth simples com Google OAuth (NextAuth.js)
-               → associa sessionId ao userId automaticamente
-               → progresso migra sem perder nada
+Tela inicial: [ digite seu email ] [ JOGAR ]
+                       ↓
+POST /api/auth/login { email }
+  → encontrou no banco → carrega progresso existente
+  → não encontrou     → cria Player novo com aquele email
+                       ↓
+Retorna { playerId } → salvo no localStorage
+                       ↓
+Todas as requisições usam playerId (substitui sessionId)
 ```
+
+Sem senha. Sem verificação. Sem OAuth.
+Quem sabe o email, acessa a conta — ok para dev e jogos casuais.
+
+Se no futuro quiser segurança real: adiciona senha ou OAuth em cima, sem mudar o resto do sistema.
 
 ### 12.2 Schema de Player (evolução do PlayerProgress)
 
@@ -680,9 +717,10 @@ Item:     rangeBonus     Int?  (equipamentos podem aumentar alcance)
 
 | Decisão | Escolha | Motivo |
 |---------|---------|--------|
-| Imagens no DB? | NÃO — filesystem `/public/assets/` | Performance, cache HTTP |
+| Imagens no DB? | NÃO — convenção de pastas `/public/assets/` | Performance, cache HTTP, versão no git |
+| Upload via admin? | NÃO — dev adiciona pasta manualmente, admin só descobre | Controle total dos assets |
 | Scripting de comportamento? | NÃO — presets TypeScript nomeados | Manutenível, type-safe |
-| Auth agora? | NÃO — sessionId anônimo | Não bloquear dev |
+| Auth | Email simples — sem senha, sem OAuth | Rápido, funciona pra dev e casual |
 | Phaser? | NÃO — Canvas puro | Controle total, bundle menor |
 | State global client? | Zustand (quando necessário) | Simples, sem boilerplate |
 | Upload de sprites | multipart → `/public/assets/` | Simples para dev local |
