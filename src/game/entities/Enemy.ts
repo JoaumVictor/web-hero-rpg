@@ -1,10 +1,10 @@
 import { loadImage } from '../renderer/sprites'
 
 const SPRITE = '/assets/characters/zombie/zombie-walk-1.png'
-const SPEED = 65
+const SPEED = 42
 const MELEE_RANGE = 90    // center-to-center to attack player
-const ATTACK_COOLDOWN = 1400
-const ATTACK_DAMAGE = 18
+const ATTACK_COOLDOWN = 2200
+const ATTACK_DAMAGE = 1
 const DRAW_SIZE = 100
 
 export class Enemy {

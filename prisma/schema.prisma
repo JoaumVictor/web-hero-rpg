@@ -6,73 +6,91 @@ datasource db {
   provider = "postgresql"
 }
 
-model User {
-  id         String      @id @default(cuid())
-  email      String      @unique
-  createdAt  DateTime    @default(now())
-  characters Character[]
+// ── Player progression ────────────────────────────────────────────
+model PlayerProgress {
+  id        String   @id @default(cuid())
+  sessionId String   @unique
+  coins     Int      @default(0)
+  updatedAt DateTime @updatedAt
 }
 
-model Character {
-  id        String    @id @default(cuid())
-  userId    String
-  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  name      String
-  level     Int       @default(1)
-  xp        Int       @default(0)
-  hpMax     Int       @default(100)
-  attack    Int       @default(10)
-  defense   Int       @default(5)
-  gold      Int       @default(0)
-  createdAt DateTime  @default(now())
-
-  inventory     InventoryItem[]
-  stageProgress StageProgress[]
+// ── Game config: heroes ───────────────────────────────────────────
+model Hero {
+  id             String   @id @default(cuid())
+  name           String
+  spritePath     String   @default("hero")
+  level          Int      @default(1)
+  hp             Int      @default(26)
+  attack         Int      @default(4)
+  defense        Int      @default(0)
+  attackCooldown Float    @default(1.5)
+  walkSpeed      Int      @default(220)
+  groupPosition  Int      @default(0)
+  isActive       Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 }
 
+// ── Game config: monsters ─────────────────────────────────────────
+model Monster {
+  id             String        @id @default(cuid())
+  name           String
+  spritePath     String        @default("zombie")
+  hp             Int           @default(12)
+  attack         Int           @default(1)
+  defense        Int           @default(0)
+  attackCooldown Float         @default(2.2)
+  walkSpeed      Int           @default(42)
+  coinDropMin    Int           @default(1)
+  coinDropMax    Int           @default(2)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  waveEntries    WaveMonster[]
+}
+
+// ── Game config: rounds ───────────────────────────────────────────
+model Round {
+  id                   String   @id @default(cuid())
+  number               Int      @unique
+  name                 String
+  chestCommonChance    Float    @default(0.5)
+  chestUncommonChance  Float    @default(0.25)
+  chestRareChance      Float    @default(0.1)
+  chestLegendaryChance Float    @default(0.02)
+  waves                Wave[]
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+}
+
+model Wave {
+  id        String        @id @default(cuid())
+  roundId   String
+  round     Round         @relation(fields: [roundId], references: [id], onDelete: Cascade)
+  order     Int
+  triggerX  Int           @default(640)
+  monsters  WaveMonster[]
+  createdAt DateTime      @default(now())
+}
+
+model WaveMonster {
+  id        String  @id @default(cuid())
+  waveId    String
+  wave      Wave    @relation(fields: [waveId], references: [id], onDelete: Cascade)
+  monsterId String
+  monster   Monster @relation(fields: [monsterId], references: [id])
+  offsetX   Int     @default(0)
+  levelMult Float   @default(1.0)
+}
+
+// ── Items / inventory ─────────────────────────────────────────────
 model Item {
-  id          String          @id @default(cuid())
+  id          String    @id @default(cuid())
   name        String
   description String?
   type        ItemType
-  rarity      Rarity          @default(COMMON)
-  statBonus   Json            @default("{}")
+  rarity      Rarity    @default(COMMON)
+  statBonus   Json      @default("{}")
   iconUrl     String?
-  inventory   InventoryItem[]
-}
-
-model InventoryItem {
-  id          String    @id @default(cuid())
-  characterId String
-  character   Character @relation(fields: [characterId], references: [id], onDelete: Cascade)
-  itemId      String
-  item        Item      @relation(fields: [itemId], references: [id])
-  quantity    Int       @default(1)
-  slot        String?
-
-  @@unique([characterId, itemId])
-}
-
-model Stage {
-  id          String          @id @default(cuid())
-  name        String
-  order       Int             @unique
-  tilemap     Json
-  enemySpawns Json
-  createdAt   DateTime        @default(now())
-  progress    StageProgress[]
-}
-
-model StageProgress {
-  id          String    @id @default(cuid())
-  characterId String
-  character   Character @relation(fields: [characterId], references: [id], onDelete: Cascade)
-  stageId     String
-  stage       Stage     @relation(fields: [stageId], references: [id])
-  completedAt DateTime  @default(now())
-  stars       Int       @default(0)
-
-  @@unique([characterId, stageId])
 }
 
 enum ItemType {
@@ -88,6 +106,5 @@ enum Rarity {
   COMMON
   UNCOMMON
   RARE
-  EPIC
   LEGENDARY
 }

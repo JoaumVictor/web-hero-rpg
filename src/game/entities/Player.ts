@@ -5,7 +5,7 @@ const ATTACK_PATHS = Array.from({ length: 3 }, (_, i) => `/assets/characters/her
 
 const SPEED = 220          // px/s
 const FRAME_MS = 100       // ms per animation frame
-const ATTACK_COOLDOWN = 650 // ms between attacks
+const ATTACK_COOLDOWN = 1500 // ms between attacks
 const DRAW_SIZE = 100      // render at 100x100 (source is 200x200)
 
 type State = 'idle' | 'walk' | 'attack'
@@ -55,7 +55,10 @@ export class Player {
     this.hitDealt = false
   }
 
-  markHitDealt() { this.hitDealt = true }
+  markHitDealt() {
+    this.hitDealt = true
+    this._attackActive = false  // cut the hitbox immediately — prevents multi-hit in same frame window
+  }
 
   takeDamage(amount: number) {
     this.hp = Math.max(0, this.hp - amount)
