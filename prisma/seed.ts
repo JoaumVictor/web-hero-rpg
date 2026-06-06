@@ -68,6 +68,26 @@ async function main() {
     },
   })
 
+  // Fourth hero — cleric (healer support)
+  await db.hero.upsert({
+    where: { id: 'hero-cleric' },
+    update: {},
+    create: {
+      id:             'hero-cleric',
+      name:           'Clérigo',
+      spriteSet:      'hero',
+      heroClass:      'cleric',
+      cost:           200,
+      hp:             16,
+      attack:         5,    // reused as healAmount
+      defense:        1,
+      attackCooldown: 2.5,
+      walkSpeed:      200,
+      attackRange:    3,
+      isActive:       true,
+    },
+  })
+
   // Default zombie monster
   await db.monster.upsert({
     where: { id: 'monster-zombie' },

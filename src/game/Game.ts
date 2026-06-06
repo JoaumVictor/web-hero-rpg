@@ -20,6 +20,9 @@ const DEFAULT_ATTACK = 4
 const DEFAULT_SPEED = 220
 const DEFAULT_COOLDOWN_MS = 1500
 
+// Damage reduction by formation position: front=100%, mid=60%, back=30%
+const POSITION_DMG_MULT = [1.0, 0.6, 0.3]
+
 // ── Waves ─────────────────────────────────────────────────────────
 interface WaveDef { triggerX: number; offsets: number[] }
 
@@ -444,6 +447,19 @@ export class Game {
             duration: 380,
           })
         }
+      } else if (p.heroClass === 'cleric') {
+        // support: heal the most-wounded alive ally within attackRange
+        const wounded = this.players
+          .filter(ally => !ally.isDead && ally !== p && ally.hp < ally.maxHp)
+          .filter(ally => Math.abs((ally.x + ally.width / 2) - hc) <= p.attackRange)
+          .sort((a, b) => (a.hp / a.maxHp) - (b.hp / b.maxHp))[0]
+
+        if (wounded) {
+          const healAmt = p.attackDamage
+          wounded.hp = Math.min(wounded.maxHp, wounded.hp + healAmt)
+          this.addFloat(wounded.x + wounded.width / 2, wounded.y - 10, `+${healAmt} HP`, '#2ecc71', 13)
+        }
+        p.markHitDealt()
       } else {
         // melee: instant damage
         for (const wave of this.waves) {
@@ -471,13 +487,21 @@ export class Game {
   }
 
   private tickEnemies(dt: number) {
-    const target = this.frontPlayer()
-    if (!target) return
+    const front = this.frontPlayer()
+    if (!front) return
 
     for (const wave of this.waves) {
       for (const e of wave.enemies) {
-        const dmg = e.update(dt, target.x, target.width)
-        if (dmg > 0) target.takeDamage(dmg)
+        const dmg = e.update(dt, front.x, front.width)
+        if (dmg > 0) {
+          for (let i = 0; i < this.players.length; i++) {
+            const p = this.players[i]
+            if (p.isDead) continue
+            const mult = POSITION_DMG_MULT[i] ?? 0.3
+            const actualDmg = Math.round(dmg * mult)
+            if (actualDmg > 0) p.takeDamage(actualDmg)
+          }
+        }
       }
       if (wave.triggered && !wave.cleared && wave.enemies.every(e => e.isDead)) {
         wave.cleared = true
@@ -718,7 +742,7 @@ export class Game {
 
     // per-hero badges (left side)
     const BADGE_W = 78
-    const BADGE_H = 30
+    const BADGE_H = 36
     const BADGE_PAD = 4
 
     for (let i = 0; i < this.players.length; i++) {
@@ -770,6 +794,16 @@ export class Game {
         ctx.fillStyle = '#555'
         ctx.textAlign = 'center'
         ctx.fillText('MORTO', bx + BADGE_W / 2, by + 23)
+      }
+
+      // Position label (only when multiple heroes)
+      if (this.players.length > 1) {
+        const posLabels = ['FRENTE', 'MEIO', 'FUNDO']
+        const posColors = ['#e74c3c', '#e67e22', '#3498db']
+        ctx.font = '7px monospace'
+        ctx.fillStyle = dead ? '#444' : (posColors[i] ?? '#777')
+        ctx.textAlign = 'center'
+        ctx.fillText(posLabels[i] ?? '', bx + BADGE_W / 2, by + 33)
       }
     }
 
