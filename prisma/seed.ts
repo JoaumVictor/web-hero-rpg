@@ -69,6 +69,85 @@ async function main() {
     },
   })
 
+  // ── Items ──────────────────────────────────────────────────────
+  const items = [
+    {
+      id: 'item-sword-rusty',
+      name: 'Espada Enferrujada',
+      description: 'Uma espada velha coberta de ferrugem. Ainda corta.',
+      type: 'WEAPON' as const,
+      rarity: 'COMMON' as const,
+      equipSlot: 'MAINHAND',
+      requiredLevel: 1,
+      statBonus: { attack: 2 },
+    },
+    {
+      id: 'item-helm-leather',
+      name: 'Elmo de Couro',
+      description: 'Proteção básica para a cabeça.',
+      type: 'HELMET' as const,
+      rarity: 'COMMON' as const,
+      equipSlot: 'HEAD',
+      requiredLevel: 1,
+      statBonus: { hp: 4 },
+    },
+    {
+      id: 'item-boots-worn',
+      name: 'Bota Desgastada',
+      description: 'Botas velhas mas ainda confortáveis.',
+      type: 'BOOTS' as const,
+      rarity: 'COMMON' as const,
+      equipSlot: 'BOOTS',
+      requiredLevel: 1,
+      statBonus: { defense: 1 },
+    },
+    {
+      id: 'item-ring-copper',
+      name: 'Anel de Cobre',
+      description: 'Um simples anel de cobre com leve encantamento.',
+      type: 'ACCESSORY' as const,
+      rarity: 'UNCOMMON' as const,
+      equipSlot: 'RING_LEFT',
+      requiredLevel: 2,
+      statBonus: { hp: 6, attack: 1 },
+    },
+    {
+      id: 'item-rune-fragment',
+      name: 'Fragmento de Runa',
+      description: 'Pedaço de uma runa antiga. Pulsa com energia residual.',
+      type: 'ACCESSORY' as const,
+      rarity: 'RARE' as const,
+      equipSlot: 'BRACELET',
+      requiredLevel: 4,
+      statBonus: { hp: 10, attack: 3, defense: 1 },
+    },
+  ]
+
+  for (const item of items) {
+    await db.item.upsert({
+      where: { id: item.id },
+      update: {},
+      create: item,
+    })
+  }
+
+  // ── Loot entries (zombie drops) ────────────────────────────────
+  const lootEntries = [
+    { id: 'loot-zombie-sword',   monsterId: 'monster-zombie', itemId: 'item-sword-rusty',   dropChance: 0.25 },
+    { id: 'loot-zombie-helm',    monsterId: 'monster-zombie', itemId: 'item-helm-leather',  dropChance: 0.18 },
+    { id: 'loot-zombie-boots',   monsterId: 'monster-zombie', itemId: 'item-boots-worn',    dropChance: 0.15 },
+    { id: 'loot-zombie-ring',    monsterId: 'monster-zombie', itemId: 'item-ring-copper',   dropChance: 0.08 },
+    { id: 'loot-zombie-rune',    monsterId: 'monster-zombie', itemId: 'item-rune-fragment', dropChance: 0.03 },
+  ]
+
+  for (const entry of lootEntries) {
+    await db.lootEntry.upsert({
+      where: { id: entry.id },
+      update: {},
+      create: entry,
+    })
+  }
+
   console.log('Seed concluído')
 }
 

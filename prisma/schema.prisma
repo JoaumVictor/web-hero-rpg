@@ -12,6 +12,7 @@ model Player {
   email          String          @unique
   coins          Int             @default(0)
   heroInstances  HeroInstance[]
+  inventory      InventoryItem[]
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
 }
@@ -83,6 +84,7 @@ model Monster {
   createdAt           DateTime      @default(now())
   updatedAt           DateTime      @updatedAt
   waveEntries         WaveMonster[]
+  lootEntries         LootEntry[]
 }
 
 // ── Game config: rounds ───────────────────────────────────────────
@@ -121,13 +123,42 @@ model WaveMonster {
 
 // ── Items ─────────────────────────────────────────────────────────
 model Item {
-  id          String   @id @default(cuid())
-  name        String
-  description String?
-  type        ItemType
-  rarity      Rarity   @default(COMMON)
-  statBonus   Json     @default("{}")
-  iconUrl     String?
+  id             String          @id @default(cuid())
+  name           String
+  description    String?
+  type           ItemType
+  rarity         Rarity          @default(COMMON)
+  statBonus      Json            @default("{}")
+  iconUrl        String?
+  equipSlot      String?
+  requiredLevel  Int             @default(1)
+  requiredClass  String?
+  socketCount    Int             @default(0)
+  lootEntries    LootEntry[]
+  inventoryItems InventoryItem[]
+}
+
+model LootEntry {
+  id         String  @id @default(cuid())
+  monsterId  String
+  monster    Monster @relation(fields: [monsterId], references: [id], onDelete: Cascade)
+  itemId     String
+  item       Item    @relation(fields: [itemId], references: [id])
+  dropChance Float   @default(0.1)
+  minQty     Int     @default(1)
+  maxQty     Int     @default(1)
+}
+
+model InventoryItem {
+  id         String   @id @default(cuid())
+  playerId   String
+  player     Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  itemId     String
+  item       Item     @relation(fields: [itemId], references: [id])
+  quantity   Int      @default(1)
+  obtainedAt DateTime @default(now())
+
+  @@index([playerId])
 }
 
 enum ItemType {

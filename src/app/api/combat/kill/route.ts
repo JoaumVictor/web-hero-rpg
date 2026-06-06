@@ -9,48 +9,77 @@ export async function POST(req: NextRequest) {
   const { playerId, monsterId, baseXp: baseXpParam, levelMult = 1 } = await req.json()
   if (!playerId) return NextResponse.json({ error: 'playerId obrigatório' }, { status: 400 })
 
-  // resolve baseXp — from DB if monsterId given, else from body, else default
+  // resolve monster data — baseXp and loot entries
   let baseXp = typeof baseXpParam === 'number' ? baseXpParam : 8
+  let lootEntries: { id: string; dropChance: number; minQty: number; maxQty: number; item: { id: string; name: string; rarity: string } }[] = []
+
   if (monsterId) {
-    const monster = await db.monster.findUnique({ where: { id: monsterId }, select: { baseXp: true } })
-    if (monster) baseXp = monster.baseXp
+    const monster = await db.monster.findUnique({
+      where: { id: monsterId },
+      select: {
+        baseXp: true,
+        lootEntries: {
+          select: {
+            id: true, dropChance: true, minQty: true, maxQty: true,
+            item: { select: { id: true, name: true, rarity: true } },
+          },
+        },
+      },
+    })
+    if (monster) {
+      baseXp = monster.baseXp
+      lootEntries = monster.lootEntries
+    }
   }
 
   const xpGained = Math.round(baseXp * levelMult)
 
-  // get all heroes in the group
+  // ── XP distribution ───────────────────────────────────────────
   const group = await db.heroInstance.findMany({
     where: { playerId, groupPosition: { not: null } },
     include: { hero: { select: { name: true } } },
   })
 
-  if (group.length === 0) {
-    return NextResponse.json({ xpGained: 0, heroes: [], levelUps: [] })
-  }
-
-  const share = Math.max(1, Math.round(xpGained / group.length))
   const levelUps: { heroName: string; newLevel: number }[] = []
 
-  const updates = group.map(async (instance) => {
-    let { level, xp } = instance
-    xp += share
+  let heroes: { id: string; name: string; level: number; xp: number; xpToNext: number }[] = []
 
-    // handle multiple level-ups in one kill (edge case for low-level heroes)
-    while (xp >= xpToNext(level)) {
-      xp -= xpToNext(level)
-      level++
-      levelUps.push({ heroName: instance.hero.name, newLevel: level })
+  if (group.length > 0) {
+    const share = Math.max(1, Math.round(xpGained / group.length))
+    heroes = await Promise.all(
+      group.map(async (instance) => {
+        let { level, xp } = instance
+        xp += share
+        while (xp >= xpToNext(level)) {
+          xp -= xpToNext(level)
+          level++
+          levelUps.push({ heroName: instance.hero.name, newLevel: level })
+        }
+        await db.heroInstance.update({ where: { id: instance.id }, data: { xp, level } })
+        return { id: instance.id, name: instance.hero.name, level, xp, xpToNext: xpToNext(level) }
+      })
+    )
+  }
+
+  // ── Loot drops ────────────────────────────────────────────────
+  const drops: { itemName: string; rarity: string; qty: number }[] = []
+
+  for (const entry of lootEntries) {
+    if (Math.random() >= entry.dropChance) continue
+    const qty = entry.minQty + Math.floor(Math.random() * (entry.maxQty - entry.minQty + 1))
+
+    // upsert: increment quantity if player already has this item
+    const existing = await db.inventoryItem.findFirst({
+      where: { playerId, itemId: entry.item.id },
+    })
+    if (existing) {
+      await db.inventoryItem.update({ where: { id: existing.id }, data: { quantity: existing.quantity + qty } })
+    } else {
+      await db.inventoryItem.create({ data: { playerId, itemId: entry.item.id, quantity: qty } })
     }
 
-    await db.heroInstance.update({
-      where: { id: instance.id },
-      data: { xp, level },
-    })
+    drops.push({ itemName: entry.item.name, rarity: entry.item.rarity, qty })
+  }
 
-    return { id: instance.id, name: instance.hero.name, level, xp, xpToNext: xpToNext(level) }
-  })
-
-  const heroes = await Promise.all(updates)
-
-  return NextResponse.json({ xpGained, heroes, levelUps })
+  return NextResponse.json({ xpGained, heroes, levelUps, drops })
 }

@@ -83,7 +83,10 @@ export default function HeroesPage() {
       <header className="flex items-center gap-4 px-6 py-3 bg-gray-900 border-b border-gray-800">
         <button onClick={() => router.push('/play')} className="text-gray-500 hover:text-gray-300 text-xs">← jogo</button>
         <span className="text-yellow-400 font-bold tracking-widest text-sm">HERÓIS</span>
-        <span className="ml-auto text-yellow-400 text-sm font-bold">⬟ {coins} moedas</span>
+        <div className="ml-auto flex items-center gap-4">
+          <button onClick={() => router.push('/play')} className="text-blue-400/70 hover:text-blue-400 text-xs transition-colors">mochila →</button>
+          <span className="text-yellow-400 text-sm font-bold">⬟ {coins} moedas</span>
+        </div>
       </header>
 
       {msg && <div className="px-6 py-2 bg-red-900/30 border-b border-red-800/50 text-red-400 text-xs">{msg}</div>}

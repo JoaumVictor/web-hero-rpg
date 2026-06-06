@@ -26,6 +26,13 @@ function persistCoins(playerId: string, coins: number) {
   }).catch(() => {})
 }
 
+const RARITY_COLORS: Record<string, string> = {
+  COMMON: '#aaa',
+  UNCOMMON: '#2ecc71',
+  RARE: '#3498db',
+  LEGENDARY: '#f39c12',
+}
+
 type HeroApiItem = {
   name: string
   instance: { id: string; level: number; xp: number; groupPosition: number | null } | null
@@ -81,14 +88,19 @@ export default function GameCanvas({ onRestart }: Props) {
       }
 
       if (playerId) {
-        game.onKill = ({ x, y, baseXp }) => {
+        game.onKill = ({ x, y, baseXp, monsterId }) => {
           fetch('/api/combat/kill', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ playerId, baseXp }),
+            body: JSON.stringify({ playerId, baseXp, monsterId }),
           })
             .then(r => r.json())
-            .then((data: { xpGained: number; heroes: { name: string; level: number; xp: number; xpToNext: number }[]; levelUps: { heroName: string; newLevel: number }[] }) => {
+            .then((data: {
+              xpGained: number
+              heroes: { name: string; level: number; xp: number; xpToNext: number }[]
+              levelUps: { heroName: string; newLevel: number }[]
+              drops: { itemName: string; rarity: string; qty: number }[]
+            }) => {
               if (!game || game['destroyed']) return
 
               // +XP float
@@ -99,6 +111,13 @@ export default function GameCanvas({ onRestart }: Props) {
               // level up floats
               for (const lu of data.levelUps) {
                 game.addFloat(x, y - 30, `${lu.heroName} LV.${lu.newLevel}!`, '#ffe066', 14)
+              }
+
+              // item drop floats
+              for (let i = 0; i < data.drops.length; i++) {
+                const drop = data.drops[i]
+                const color = RARITY_COLORS[drop.rarity] ?? '#aaa'
+                game.addFloat(x, y - 50 - i * 18, `⬟ ${drop.itemName}`, color, 12)
               }
 
               // update HUD badges

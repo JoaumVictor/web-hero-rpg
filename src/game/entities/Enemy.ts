@@ -23,14 +23,16 @@ export class Enemy {
 
   readonly spriteSet: string
   readonly baseXp: number
+  readonly monsterId: string | undefined
 
-  constructor(x: number, y: number, hp = 80, spriteSet = 'zombie', baseXp = 8) {
+  constructor(x: number, y: number, hp = 80, spriteSet = 'zombie', baseXp = 8, monsterId?: string) {
     this.x = x
     this.y = y
     this.hp = hp
     this.maxHp = hp
     this.spriteSet = spriteSet
     this.baseXp = baseXp
+    this.monsterId = monsterId
   }
 
   async load() {

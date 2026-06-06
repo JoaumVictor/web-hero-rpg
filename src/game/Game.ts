@@ -91,7 +91,7 @@ export class Game {
 
   onRestart?: () => void
   onCoinsChange?: (total: number) => void
-  onKill?: (info: { x: number; y: number; baseXp: number }) => void
+  onKill?: (info: { x: number; y: number; baseXp: number; monsterId?: string }) => void
 
   private heroInfo: HeroInfo[] = []
 
@@ -119,7 +119,7 @@ export class Game {
     // enemies created with placeholder x=0 — real position set on wave trigger
     this.waves = WAVE_DEFS.map(def => ({
       def,
-      enemies: def.offsets.map(() => new Enemy(0, GROUND_Y - 100, ENEMY_HP)),
+      enemies: def.offsets.map(() => new Enemy(0, GROUND_Y - 100, ENEMY_HP, 'zombie', 8, 'monster-zombie')),
       triggered: false,
       cleared: false,
     }))
@@ -283,7 +283,7 @@ export class Game {
         this.totalCoins += coins
         this.onCoinsChange?.(this.totalCoins)
         this.floats.push({ wx: e.x + e.width / 2, wy: e.y, text: `+${coins}`, color: '#f1c40f', life: 1 })
-        this.onKill?.({ x: e.x + e.width / 2, y: e.y - 20, baseXp: e.baseXp })
+        this.onKill?.({ x: e.x + e.width / 2, y: e.y - 20, baseXp: e.baseXp, monsterId: e.monsterId })
       }
     }
   }
