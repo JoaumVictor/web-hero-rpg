@@ -1,6 +1,7 @@
 import { Player } from './entities/Player'
 import { Enemy } from './entities/Enemy'
 import { Projectile } from './entities/Projectile'
+import { EnemyProjectile } from './entities/EnemyProjectile'
 
 // ── Canvas / World ────────────────────────────────────────────────
 const W = 800
@@ -46,6 +47,7 @@ export interface WaveMonsterDB {
     attackCooldown: number
     walkSpeed: number
     attackRange: number
+    attackBehavior: string
     spriteSet: string
     baseXp: number
     coinDropMin: number
@@ -130,6 +132,7 @@ export class Game {
   private heroDisplay: HeroDisplayInfo[]
   private waves: Wave[]
   private projectiles: Projectile[] = []
+  private enemyProjectiles: EnemyProjectile[] = []
   private spellFlashes: SpellFlash[] = []
 
   private phase: Phase = 'intro'
@@ -243,6 +246,8 @@ export class Game {
           m.monster.isBoss,
           m.monster.sizeMultiplier,
           m.monster.name,
+          m.monster.attackBehavior ?? 'MELEE',
+          m.monster.attack,
         )),
         triggered: false,
         cleared: false,
@@ -297,6 +302,7 @@ export class Game {
         this.autoMove(dt)
         this.resolveCombat()
         this.tickProjectiles(dt)
+        this.tickEnemyProjectiles(dt)
         this.tickSpellFlashes(dt)
         this.tickEnemies(dt)
         this.dropCoins()
@@ -447,6 +453,18 @@ export class Game {
             duration: 380,
           })
         }
+      } else if (p.heroClass === 'assassin') {
+        // finisher: target the lowest-HP enemy in range
+        const target = allEnemies
+          .filter(e => {
+            const ec = e.x + e.width / 2
+            return (p.facingRight ? ec > hc : ec < hc) && Math.abs(hc - ec) <= p.attackRange
+          })
+          .sort((a, b) => a.hp - b.hp)[0]
+        if (target) {
+          target.takeDamage(p.attackDamage)
+          p.markHitDealt()
+        }
       } else if (p.heroClass === 'cleric') {
         // support: heal the most-wounded alive ally within attackRange
         const wounded = this.players
@@ -493,7 +511,16 @@ export class Game {
     for (const wave of this.waves) {
       for (const e of wave.enemies) {
         const dmg = e.update(dt, front.x, front.width)
-        if (dmg > 0) {
+        if (dmg === -1) {
+          // ranged enemy wants to fire — spawn projectile toward front hero
+          this.enemyProjectiles.push(new EnemyProjectile(
+            e.x,
+            e.y + e.height / 2,
+            front.x + front.width / 2,
+            front.y + front.height / 2,
+            e.attackDamage,
+          ))
+        } else if (dmg > 0) {
           for (let i = 0; i < this.players.length; i++) {
             const p = this.players[i]
             if (p.isDead) continue
@@ -515,6 +542,27 @@ export class Game {
           }
         }
       }
+    }
+  }
+
+  private tickEnemyProjectiles(dt: number) {
+    for (const proj of this.enemyProjectiles) {
+      if (!proj.active) continue
+      proj.update(dt)
+      if (proj.isOffScreen) { proj.active = false; continue }
+      for (const p of this.players) {
+        if (p.isDead) continue
+        const pc = p.x + p.width / 2
+        const py = p.y + p.height / 2
+        if (Math.hypot(proj.x - pc, proj.y - py) < p.width / 2 + 8) {
+          p.takeDamage(proj.damage)
+          proj.active = false
+          break
+        }
+      }
+    }
+    if (this.enemyProjectiles.length > 60) {
+      this.enemyProjectiles = this.enemyProjectiles.filter(p => p.active)
     }
   }
 
@@ -634,6 +682,10 @@ export class Game {
 
     for (const proj of this.projectiles) {
       if (proj.active) proj.draw(ctx)
+    }
+
+    for (const eproj of this.enemyProjectiles) {
+      if (eproj.active) eproj.draw(ctx)
     }
 
     for (const f of this.floats) {

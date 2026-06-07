@@ -15,6 +15,7 @@ model Player {
   inventory      InventoryItem[]
   levelProgress  PlayerLevelProgress[]
   skillUnlocks   PlayerSkillUnlock[]
+  pets           PlayerPet[]
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
 }
@@ -240,6 +241,29 @@ model PlayerSkillUnlock {
   unlockedAt  DateTime  @default(now())
 
   @@unique([playerId, nodeId])
+}
+
+// ── Pets ─────────────────────────────────────────────────────────
+model Pet {
+  id          String      @id
+  name        String
+  description String
+  rarity      String      @default("COMMON")
+  buffStats   Json
+  cost        Int         @default(0)
+  isActive    Boolean     @default(true)
+  playerPets  PlayerPet[]
+}
+
+model PlayerPet {
+  id       String  @id @default(cuid())
+  playerId String
+  player   Player  @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  petId    String
+  pet      Pet     @relation(fields: [petId], references: [id])
+  isActive Boolean @default(false)
+
+  @@unique([playerId, petId])
 }
 
 enum ItemType {

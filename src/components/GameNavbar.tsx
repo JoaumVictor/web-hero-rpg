@@ -43,6 +43,13 @@ export default function GameNavbar({
         <SkillIcon />
         SKILLS
       </Link>
+      <Link
+        href="/pets"
+        className="flex items-center gap-1.5 px-3 py-1.5 rounded border text-xs font-mono tracking-wide transition-all border-gray-700 text-gray-500 hover:border-gray-500 hover:text-gray-300"
+      >
+        <PawIcon />
+        PETS
+      </Link>
     </div>
   )
 }
@@ -105,6 +112,18 @@ function SkillIcon() {
   return (
     <svg width="12" height="14" viewBox="0 0 14 16" fill="currentColor">
       <polygon points="7,0 9,5 14,5 10,9 12,14 7,11 2,14 4,9 0,5 5,5" />
+    </svg>
+  )
+}
+
+function PawIcon() {
+  return (
+    <svg width="14" height="12" viewBox="0 0 16 14" fill="currentColor">
+      <ellipse cx="4" cy="3" rx="2" ry="2.5" />
+      <ellipse cx="12" cy="3" rx="2" ry="2.5" />
+      <ellipse cx="1.5" cy="8" rx="1.5" ry="2" />
+      <ellipse cx="14.5" cy="8" rx="1.5" ry="2" />
+      <path d="M8 5 C4 5 2 8 3 11 C4 13 6 14 8 14 C10 14 12 13 13 11 C14 8 12 5 8 5 Z" />
     </svg>
   )
 }

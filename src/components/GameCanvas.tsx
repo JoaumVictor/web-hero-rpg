@@ -71,12 +71,26 @@ async function loadSelectedLevel(levelId: string): Promise<{ waveDefs: WaveDefDB
 
 async function loadGroupData(playerId: string): Promise<{ slots: HeroSlot[]; bonus: SkillBonus }> {
   try {
-    const [heroRes, bonusRes] = await Promise.all([
+    const [heroRes, bonusRes, petsRes] = await Promise.all([
       fetch(`/api/heroes?player=${playerId}`),
       fetch(`/api/skills/bonus?player=${playerId}`),
+      fetch(`/api/pets?player=${playerId}`),
     ])
     const heroes: HeroApiItem[] = await heroRes.json()
-    const bonus: SkillBonus = bonusRes.ok ? await bonusRes.json() : {}
+    const skillBonus: SkillBonus = bonusRes.ok ? await bonusRes.json() : {}
+    const pets: { buffStats: Record<string, number>; isActive: boolean; owned: boolean }[] =
+      petsRes.ok ? await petsRes.json() : []
+
+    const activePet = pets.find(p => p.owned && p.isActive)
+    const petStats: SkillBonus = activePet ? activePet.buffStats : {}
+
+    const bonus: SkillBonus = {
+      allHp:      (skillBonus.allHp      ?? 0) + (petStats.allHp      ?? 0),
+      allAttack:  (skillBonus.allAttack  ?? 0) + (petStats.allAttack  ?? 0),
+      allDefense: (skillBonus.allDefense ?? 0) + (petStats.allDefense ?? 0),
+      coinBonus:  (skillBonus.coinBonus  ?? 0) + (petStats.coinBonus  ?? 0),
+      xpBonus:    (skillBonus.xpBonus    ?? 0) + (petStats.xpBonus    ?? 0),
+    }
 
     const inGroup = heroes
       .filter(h => h.instance?.groupPosition != null)

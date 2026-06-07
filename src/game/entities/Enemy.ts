@@ -21,6 +21,7 @@ export class Enemy {
   private cooldown = 0
   private frameIndex = 0
   private frameTimer = 0
+  private deathElapsed = 0
 
   readonly spriteSet: string
   readonly baseXp: number
@@ -28,6 +29,8 @@ export class Enemy {
   readonly isBoss: boolean
   readonly sizeMultiplier: number
   readonly name: string
+  readonly attackBehavior: string
+  readonly attackDamage: number
   private readonly walkSpeed: number
   private readonly attackCooldownMs: number
   private readonly attackRangePx: number
@@ -45,6 +48,8 @@ export class Enemy {
     isBoss = false,
     sizeMultiplier = 1.0,
     name = '',
+    attackBehavior = 'MELEE',
+    attackDmg = ATTACK_DAMAGE,
   ) {
     this.x = x
     this.y = y
@@ -56,6 +61,8 @@ export class Enemy {
     this.isBoss = isBoss
     this.sizeMultiplier = sizeMultiplier
     this.name = name
+    this.attackBehavior = attackBehavior
+    this.attackDamage = attackDmg
     this.walkSpeed = walkSpeed
     this.attackCooldownMs = attackCooldownMs
     this.attackRangePx = attackRange * GRID_SIZE
@@ -72,7 +79,11 @@ export class Enemy {
   takeDamage(amount: number) { this.hp = Math.max(0, this.hp - amount) }
 
   update(dt: number, playerX: number, playerW: number): number {
-    if (this.isDead || !this.active) return 0
+    if (!this.active) return 0
+    if (this.isDead) {
+      this.deathElapsed += dt * 1000
+      return 0
+    }
 
     const ms = dt * 1000
     const pc = playerX + playerW / 2
@@ -97,13 +108,35 @@ export class Enemy {
     this.cooldown = Math.max(0, this.cooldown - ms)
     if (dist <= this.attackRangePx && this.cooldown === 0) {
       this.cooldown = this.attackCooldownMs
-      return ATTACK_DAMAGE
+      return this.attackBehavior === 'RANGED_PROJECTILE' ? -1 : this.attackDamage
     }
     return 0
   }
 
   draw(ctx: CanvasRenderingContext2D) {
-    if (!this.sprites || this.isDead) return
+    if (!this.sprites) return
+
+    if (this.isDead) {
+      const DEATH_MS = 800
+      if (this.deathElapsed < DEATH_MS) {
+        const deathFrames = this.sprites.death ?? []
+        const frame = deathFrames[0]
+        if (frame) {
+          const drawY = this.y - (this.height - DRAW_SIZE)
+          ctx.save()
+          ctx.globalAlpha = Math.max(0, 1 - this.deathElapsed / DEATH_MS)
+          if (this.facingRight) {
+            ctx.drawImage(frame, this.x, drawY, this.width, this.height)
+          } else {
+            ctx.translate(this.x + this.width, drawY)
+            ctx.scale(-1, 1)
+            ctx.drawImage(frame, 0, 0, this.width, this.height)
+          }
+          ctx.restore()
+        }
+      }
+      return
+    }
 
     const frames = this.sprites.walk
     const frame = frames[Math.min(this.frameIndex, frames.length - 1)]
